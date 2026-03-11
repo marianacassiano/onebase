@@ -612,191 +612,95 @@ async function confirmarImport(){
   showLoading();
   try{
     const colunas=fileHeaders.filter(h=>h!==cnpjCol);
-    pl.textContent='Criando registro da base...';pf.style.width='5%';
-    const [baseRec]=await sbFetch('bases',{method:'POST',body:JSON.stringify({nome,arquivo:nome,colunas:[cnpjCol,...colunas],total_linhas:fileData.length,importado_por:currentUser.id})});
-    
-    const CHUNK=200;let processed=0;
-    for(let i=0;i<fileData.length;i+=CHUNK){
-      const chunk=fileData.slice(i,i+CHUNK);
-      const cnpjs=chunk.map(r=>normalizeCNPJ(r[cnpjCol])).filter(Boolean);
-      if(!cnpjs.length){processed+=chunk.length;continue;}
-      
-      const existentes=await sbFetch(`registros?cnpj=in.(${cnpjs.map(c=>`"${c}"`).join(',')})&select=id,cnpj,dados,fontes`).catch(()=>[]);
-      const existMap={};existentes.forEach(r=>existMap[r.cnpj]=r);
-      
-      const toInsert=[],toUpdate=[];
-      chunk.forEach(row=>{
-        const cnpj=normalizeCNPJ(row[cnpjCol]);
-        if(!cnpj||cnpj==='00000000000000')return;
-        const dados={};
-        colunas.forEach(col=>{if(row[col]!=null&&row[col]!=='')dados[col]=row[col];});
+    pl.textContent='Criando registro da base...';pf.style.width='3%';
+
+    const [baseRec]=await sbFetch('bases',{method:'POST',body:JSON.stringify({
+      nome, arquivo:nome, colunas:[cnpjCol,...colunas],
+      total_linhas:fileData.length, importado_por:currentUser.id
+    })});
+
+    // Monta todos os registros válidos
+    pl.textContent='Preparando dados...';pf.style.width='8%';
+    const todosRegistros=[];
+    fileData.forEach(row=>{
+      const cnpj=normalizeCNPJ(row[cnpjCol]);
+      if(!cnpj||cnpj==='00000000000000')return;
+      const dados={};
+      colunas.forEach(col=>{
+        const v=row[col];
+        if(v!=null&&v!=='')dados[col]=String(v);
+      });
+      todosRegistros.push({cnpj,dados});
+    });
+
+    const total=todosRegistros.length;
+    let processed=0, erros=0;
+    const CHUNK=100; // menor para evitar payload grande
+
+    for(let i=0;i<todosRegistros.length;i+=CHUNK){
+      const chunk=todosRegistros.slice(i,i+CHUNK);
+      const cnpjs=chunk.map(r=>r.cnpj);
+
+      // Busca existentes neste chunk
+      let existentes=[];
+      try{
+        existentes=await sbFetch(`registros?cnpj=in.(${cnpjs.map(c=>`"${c}"`).join(',')})&select=id,cnpj,dados,fontes`);
+      }catch(e){ existentes=[]; }
+
+      const existMap={};
+      existentes.forEach(r=>existMap[r.cnpj]=r);
+
+      const toInsert=[], toUpdate=[];
+      chunk.forEach(({cnpj,dados})=>{
         if(existMap[cnpj]){
           const ex=existMap[cnpj];
-          toUpdate.push({id:ex.id,dados:{...(ex.dados||{}),...dados},fontes:[...new Set([...(ex.fontes||[]),baseRec.id])],updated_at:new Date().toISOString()});
+          toUpdate.push({
+            id:ex.id,
+            dados:{...(ex.dados||{}),...dados},
+            fontes:[...new Set([...(ex.fontes||[]),baseRec.id])],
+            updated_at:new Date().toISOString()
+          });
         }else{
           toInsert.push({cnpj,dados,fontes:[baseRec.id]});
         }
       });
-      
-      if(toInsert.length)await sbFetch('registros',{method:'POST',body:JSON.stringify(toInsert),headers:{'Prefer':'resolution=merge-duplicates'}}).catch(()=>{});
-      for(const upd of toUpdate)await sbFetch(`registros?id=eq.${upd.id}`,{method:'PATCH',body:JSON.stringify({dados:upd.dados,fontes:upd.fontes,updated_at:upd.updated_at}),headers:{'Prefer':''}}).catch(()=>{});
-      
+
+      // INSERT em lote
+      if(toInsert.length){
+        try{
+          await sbFetch('registros',{
+            method:'POST',
+            body:JSON.stringify(toInsert),
+            headers:{'Prefer':'return=minimal'}
+          });
+        }catch(e){ erros+=toInsert.length; console.error('Insert erro chunk '+i, e.message); }
+      }
+
+      // UPDATE um a um (mais confiável)
+      for(const upd of toUpdate){
+        try{
+          await sbFetch(`registros?id=eq.${upd.id}`,{
+            method:'PATCH',
+            body:JSON.stringify({dados:upd.dados,fontes:upd.fontes,updated_at:upd.updated_at}),
+            headers:{'Prefer':'return=minimal'}
+          });
+        }catch(e){ erros++; }
+      }
+
       processed+=chunk.length;
-      pf.style.width=Math.round(processed/fileData.length*90+5)+'%';
-      pl.textContent=`Processando ${processed.toLocaleString('pt-BR')} de ${fileData.length.toLocaleString('pt-BR')}...`;
+      const pct=Math.round(processed/total*90)+8;
+      pf.style.width=pct+'%';
+      pl.textContent=`Importando ${processed.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}...${erros?` (${erros} erros)`:''}`;
     }
-    
-    pf.style.width='100%';pl.textContent='Concluído!';
-    showToast(`✅ ${fileData.length.toLocaleString('pt-BR')} registros importados!`);
-    setTimeout(()=>{closeUploadModal();loadAll();},800);
-  }catch(e){showToast('Erro na importação: '+e.message,'error');}
+
+    pf.style.width='100%';
+    pl.textContent=erros?`Concluído com ${erros} erros. Verifique o console.`:'Concluído!';
+    showToast(`✅ ${(total-erros).toLocaleString('pt-BR')} registros importados!`+(erros?` ⚠️ ${erros} com erro`:''));
+    setTimeout(()=>{closeUploadModal();loadAll();},1000);
+  }catch(e){
+    showToast('Erro na importação: '+e.message,'error');
+    console.error(e);
+  }
   document.getElementById('btn-import').disabled=false;
   hideLoading();
 }
-
-// ── BASE UNIFICADA ─────────────────────────────────────────────────
-function renderFiltros(){
-  const keys=new Set();BASES.forEach(b=>(b.colunas||[]).forEach(c=>{if(!c.toLowerCase().includes('cnpj'))keys.add(c);}));
-  document.getElementById('filtros-cols').innerHTML=[...keys].slice(0,10).map(k=>`
-    <div class="filtro-item">
-      <label>${k}</label>
-      <input type="text" placeholder="Filtrar..." data-col="${k}" class="filtro-input">
-    </div>`).join('');
-}
-
-function applyFiltros(){
-  const inputs=document.querySelectorAll('.filtro-input');
-  const search=document.getElementById('search-unificada').value.trim().toLowerCase();
-  filteredRegs=REGISTROS.filter(r=>{
-    if(search){const c=formatCNPJ(r.cnpj).toLowerCase(),d=JSON.stringify(r.dados||{}).toLowerCase();if(!c.includes(search)&&!d.includes(search))return false;}
-    for(const inp of inputs){const val=inp.value.trim().toLowerCase();if(!val)continue;const cell=String((r.dados||{})[inp.dataset.col]||'').toLowerCase();if(!cell.includes(val))return false;}
-    return true;
-  });
-  currentPage=1;renderUnificada();
-}
-
-function clearFiltros(){
-  document.querySelectorAll('.filtro-input').forEach(i=>i.value='');
-  document.getElementById('search-unificada').value='';
-  filteredRegs=[...REGISTROS];currentPage=1;renderUnificada();
-}
-
-function renderUnificada(){
-  if(!REGISTROS.length){
-    document.getElementById('tbl-head').innerHTML='';
-    document.getElementById('tbl-body').innerHTML='';
-    document.getElementById('tbl-empty').style.display='block';
-    document.getElementById('tbl-empty').textContent='Nenhuma base importada ainda.';
-    document.getElementById('pagination').innerHTML='';
-    return;
-  }
-  const allKeys=new Set();filteredRegs.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeys.add(k)));
-  const cols=['cnpj',...allKeys];
-  document.getElementById('tbl-head').innerHTML='<tr>'+cols.map(c=>`<th class="${c==='cnpj'?'cnpj-col':''}">${c==='cnpj'?'CNPJ':c}</th>`).join('')+'<th>Fontes</th></tr>';
-  
-  const total=filteredRegs.length,totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
-  if(currentPage>totalPages)currentPage=totalPages;
-  const pageRows=filteredRegs.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
-  
-  if(!pageRows.length){document.getElementById('tbl-body').innerHTML='';document.getElementById('tbl-empty').style.display='block';document.getElementById('tbl-empty').textContent='Nenhum registro com esses filtros.';}
-  else{
-    document.getElementById('tbl-empty').style.display='none';
-    document.getElementById('tbl-body').innerHTML=pageRows.map(r=>{
-      const cells=cols.map(c=>`<td class="${c==='cnpj'?'cnpj-col':''}">${c==='cnpj'?formatCNPJ(r.cnpj):((r.dados||{})[c]??'')}</td>`);
-      const fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return`<span class="fonte-tag">${b?b.nome:fid.substring(0,6)}</span>`;}).join('');
-      return`<tr>${cells.join('')}<td>${fontes}</td></tr>`;
-    }).join('');
-  }
-  
-  const maxBtn=5;let btns='';
-  for(let p=1;p<=Math.min(totalPages,maxBtn);p++)btns+=`<button class="page-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
-  if(totalPages>maxBtn)btns+=`<button class="page-btn" disabled>…</button><button class="page-btn${currentPage===totalPages?' active':''}" onclick="goPage(${totalPages})">${totalPages}</button>`;
-  document.getElementById('pagination').innerHTML=`<span class="pag-info">${total.toLocaleString('pt-BR')} registros | pág ${currentPage}/${totalPages}</span><div class="pag-btns"><button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage<=1?'disabled':''}>‹</button>${btns}<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage>=totalPages?'disabled':''}>›</button></div>`;
-}
-
-function goPage(p){if(p<1||p>Math.ceil(filteredRegs.length/PAGE_SIZE))return;currentPage=p;renderUnificada();}
-
-function exportUnificada(){
-  if(!filteredRegs.length){showToast('Nenhum dado para exportar','error');return;}
-  const allKeys=new Set();filteredRegs.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeys.add(k)));
-  const rows=filteredRegs.map(r=>{const obj={cnpj:formatCNPJ(r.cnpj)};allKeys.forEach(k=>obj[k]=(r.dados||{})[k]??'');obj.fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return b?b.nome:fid;}).join(', ');return obj;});
-  const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Base Unificada');
-  XLSX.writeFile(wb,`fotus_base_unificada_${new Date().toISOString().slice(0,10)}.xlsx`);
-  showToast('Exportado!');
-}
-
-// ── LISTAS ─────────────────────────────────────────────────────────
-function openSaveListaModal(){
-  document.getElementById('lista-count').textContent=filteredRegs.length.toLocaleString('pt-BR');
-  document.getElementById('lista-nome').value='';
-  document.getElementById('modal-lista').classList.add('open');
-}
-function closeListaModal(){document.getElementById('modal-lista').classList.remove('open');}
-
-async function salvarLista(){
-  const nome=document.getElementById('lista-nome').value.trim();
-  if(!nome){showToast('Dê um nome para a lista','error');return;}
-  showLoading();
-  try{
-    const cnpjs=filteredRegs.map(r=>r.cnpj);
-    const filtros={};document.querySelectorAll('.filtro-input').forEach(i=>{if(i.value.trim())filtros[i.dataset.col]=i.value.trim();});
-    const [lista]=await sbFetch('listas',{method:'POST',body:JSON.stringify({nome,filtros,cnpjs,total:cnpjs.length,criado_por:currentUser.id})});
-    LISTAS.unshift(lista);closeListaModal();renderListas();renderDashboard();
-    showToast(`Lista "${nome}" salva com ${cnpjs.length.toLocaleString('pt-BR')} empresas!`);
-  }catch(e){showToast('Erro: '+e.message,'error');}
-  hideLoading();
-}
-
-function renderListas(){
-  const grid=document.getElementById('listas-grid'),empty=document.getElementById('listas-empty');
-  if(!LISTAS.length){grid.innerHTML='';empty.style.display='block';return;}
-  empty.style.display='none';
-  const colors=['var(--blue)','var(--orange)','var(--teal)','var(--green)'];
-  grid.innerHTML=LISTAS.map((l,i)=>`
-    <div class="lista-card">
-      <div class="lista-card-header"><div class="lista-card-title">${l.nome}</div><span style="font-size:10px;color:var(--gray-400);font-family:'DM Mono';">${new Date(l.created_at).toLocaleDateString('pt-BR')}</span></div>
-      <div class="lista-card-count" style="color:${colors[i%colors.length]}">${(l.total||0).toLocaleString('pt-BR')}</div>
-      <div class="lista-card-sub">empresas selecionadas</div>
-      <div class="lista-card-footer">
-        <button class="btn-lista" onclick="verLista('${l.id}')">👁 Ver</button>
-        <button class="btn-lista" onclick="exportListaById('${l.id}')">📥 Exportar</button>
-        <button class="btn-lista danger" onclick="deleteLista('${l.id}')">🗑</button>
-      </div>
-    </div>`).join('');
-}
-
-async function deleteLista(id){
-  if(!confirm('Excluir esta lista?'))return;
-  showLoading();
-  try{await sbFetch(`listas?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':''}});LISTAS=LISTAS.filter(l=>l.id!==id);renderListas();renderDashboard();showToast('Lista excluída.');}
-  catch(e){showToast('Erro: '+e.message,'error');}
-  hideLoading();
-}
-
-async function verLista(id){
-  verListaId=id;const lista=LISTAS.find(l=>l.id===id);if(!lista)return;
-  document.getElementById('ver-lista-titulo').textContent=lista.nome;
-  document.getElementById('ver-lista-sub').textContent=`${(lista.total||0).toLocaleString('pt-BR')} empresas`;
-  showLoading();
-  const regs=REGISTROS.filter(r=>(lista.cnpjs||[]).includes(r.cnpj));
-  const allKeys=new Set();regs.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeys.add(k)));
-  const cols=['cnpj',...allKeys];
-  document.getElementById('ver-lista-head').innerHTML='<tr>'+cols.map(c=>`<th>${c==='cnpj'?'CNPJ':c}</th>`).join('')+'</tr>';
-  document.getElementById('ver-lista-body').innerHTML=regs.slice(0,200).map(r=>'<tr>'+cols.map(c=>`<td class="${c==='cnpj'?'cnpj-col':''}">${c==='cnpj'?formatCNPJ(r.cnpj):((r.dados||{})[c]??'')}</td>`).join('')+'</tr>').join('');
-  document.getElementById('modal-ver-lista').classList.add('open');
-  hideLoading();
-}
-function closeVerListaModal(){document.getElementById('modal-ver-lista').classList.remove('open');}
-function exportVerLista(){exportListaById(verListaId);}
-function exportListaById(id){
-  const lista=LISTAS.find(l=>l.id===id);if(!lista)return;
-  const regs=REGISTROS.filter(r=>(lista.cnpjs||[]).includes(r.cnpj));
-  const allKeys=new Set();regs.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeys.add(k)));
-  const rows=regs.map(r=>{const obj={cnpj:formatCNPJ(r.cnpj)};allKeys.forEach(k=>obj[k]=(r.dados||{})[k]??'');return obj;});
-  const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,lista.nome.substring(0,31));
-  XLSX.writeFile(wb,`fotus_lista_${lista.nome.replace(/\s/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
-  showToast('Exportado!');
-}
-</script>
-</body>
-</html>
