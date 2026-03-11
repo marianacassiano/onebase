@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FOTUS: Segmentação</title>
+<title>ONEBASE FOTUS</title>
 <link rel="icon" href="https://energia.fotus.com.br/wp-content/uploads/2025/02/LOGO_Fotus-1A-e1739992227141.png" type="image/png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -180,7 +180,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
   <div class="login-card">
     <div class="logo-badge"><img src="https://energia.fotus.com.br/wp-content/uploads/2025/02/LOGO_Fotus-1A-e1739992227141.png" alt="FOTUS"></div>
     <h1>Acesso ao Painel</h1>
-    <p class="subtitle">FOTUS: SEGMENTAÇÃO</p>
+    <p class="subtitle">ONEBASE FOTUS</p>
     <input class="inp" type="email" id="inp-email" placeholder="E-mail" onkeydown="if(event.key==='Enter')doLogin()">
     <input class="inp" type="password" id="inp-senha" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn-login" onclick="doLogin()">ENTRAR</button>
@@ -193,7 +193,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
   <div class="topbar">
     <div class="topbar-logo">
       <div class="tbadge"><img src="https://energia.fotus.com.br/wp-content/uploads/2025/02/LOGO_Fotus-1A-e1739992227141.png" alt="FOTUS"></div>
-      <div class="app-name">FOTUS: SEGMENTAÇÃO</div>
+      <div class="app-name">ONEBASE FOTUS</div>
     </div>
     <nav class="topbar-nav">
       <button class="nav-btn active" id="nav-dashboard" onclick="showView('dashboard')">Dashboard</button>
@@ -295,6 +295,10 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
       <div class="upload-zone-icon">📊</div>
       <div class="upload-zone-title" id="upload-zone-title">Arraste ou clique para selecionar</div>
       <div class="upload-zone-sub">.xlsx, .xls ou .csv</div>
+    </div>
+    <div id="sheet-selector" style="display:none;margin-top:16px;">
+      <label class="form-label">Qual aba da planilha?</label>
+      <select class="form-select" id="sel-sheet" onchange="loadSheet(this.value)"></select>
     </div>
     <div class="cnpj-selector" id="cnpj-selector">
       <label class="form-label">Qual coluna é o CNPJ?</label>
@@ -402,14 +406,28 @@ function toggleUserMenu(){document.getElementById('user-dropdown').classList.tog
 document.addEventListener('click',e=>{if(!e.target.closest('.user-menu'))document.getElementById('user-dropdown').classList.remove('open');});
 
 // ── LOAD ───────────────────────────────────────────────────────────
+async function fetchAll(path){
+  // busca todos os registros paginando de 1000 em 1000
+  const LIMIT=1000;
+  let all=[],offset=0,done=false;
+  while(!done){
+    const sep=path.includes('?')?'&':'?';
+    const chunk=await sbFetch(`${path}${sep}limit=${LIMIT}&offset=${offset}`);
+    all=all.concat(chunk);
+    if(chunk.length<LIMIT)done=true;
+    else offset+=LIMIT;
+  }
+  return all;
+}
+
 async function loadAll(){
   showLoading();
   try{
-    [BASES,REGISTROS,LISTAS]=await Promise.all([
+    [BASES,LISTAS]=await Promise.all([
       sbFetch('bases?select=*&order=created_at.desc'),
-      sbFetch('registros?select=*&order=cnpj.asc'),
       sbFetch('listas?select=*&order=created_at.desc')
     ]);
+    REGISTROS=await fetchAll('registros?select=*&order=cnpj.asc');
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
@@ -489,7 +507,9 @@ function openUploadModal(){
   document.getElementById('upload-nome').value='';
   document.getElementById('upload-zone-title').textContent='Arraste ou clique para selecionar';
   document.getElementById('cnpj-selector').style.display='none';
+  document.getElementById('sheet-selector').style.display='none';
   document.getElementById('btn-import').style.display='none';
+  currentWB=null;
   document.getElementById('progress-wrap').style.display='none';
   document.getElementById('upload-file').value='';
   document.getElementById('modal-upload').classList.add('open');
@@ -499,24 +519,37 @@ function onDragOver(e){e.preventDefault();document.getElementById('upload-zone')
 function onDragLeave(){document.getElementById('upload-zone').classList.remove('dragover');}
 function onDrop(e){e.preventDefault();onDragLeave();const f=e.dataTransfer.files[0];if(f)onFileSelect(f);}
 
+let currentWB = null;
+
 function onFileSelect(file){
   if(!file)return;
   document.getElementById('upload-zone-title').textContent='📄 '+file.name;
   if(!document.getElementById('upload-nome').value)document.getElementById('upload-nome').value=file.name.replace(/\.[^.]+$/,'');
   const reader=new FileReader();
   reader.onload=e=>{
-    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
-    if(!rows.length){showToast('Arquivo vazio ou inválido','error');return;}
-    fileData=rows;fileHeaders=Object.keys(rows[0]);
-    const sel=document.getElementById('sel-cnpj-col');
-    sel.innerHTML=fileHeaders.map(h=>`<option value="${h}" ${h.toLowerCase().includes('cnpj')?'selected':''}>${h}</option>`).join('');
-    document.getElementById('preview-thead').innerHTML='<tr>'+fileHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr>';
-    document.getElementById('preview-tbody').innerHTML=rows.slice(0,5).map(r=>'<tr>'+fileHeaders.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('');
-    document.getElementById('cnpj-selector').style.display='block';
-    document.getElementById('btn-import').style.display='inline-flex';
+    currentWB=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const sheets=currentWB.SheetNames;
+    // populate sheet selector
+    const sheetWrap=document.getElementById('sheet-selector');
+    const sheetSel=document.getElementById('sel-sheet');
+    sheetSel.innerHTML=sheets.map((s,i)=>`<option value="${s}">${s}</option>`).join('');
+    sheetWrap.style.display=sheets.length>1?'block':'none';
+    loadSheet(sheets[0]);
   };
   reader.readAsArrayBuffer(file);
+}
+
+function loadSheet(sheetName){
+  if(!currentWB)return;
+  const rows=XLSX.utils.sheet_to_json(currentWB.Sheets[sheetName],{defval:''});
+  if(!rows.length){showToast('Aba vazia ou inválida','error');return;}
+  fileData=rows;fileHeaders=Object.keys(rows[0]);
+  const sel=document.getElementById('sel-cnpj-col');
+  sel.innerHTML=fileHeaders.map(h=>`<option value="${h}" ${h.toLowerCase().includes('cnpj')?'selected':''}>${h}</option>`).join('');
+  document.getElementById('preview-thead').innerHTML='<tr>'+fileHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  document.getElementById('preview-tbody').innerHTML=rows.slice(0,5).map(r=>'<tr>'+fileHeaders.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('');
+  document.getElementById('cnpj-selector').style.display='block';
+  document.getElementById('btn-import').style.display='inline-flex';
 }
 
 async function confirmarImport(){
