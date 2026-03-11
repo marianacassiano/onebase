@@ -378,7 +378,15 @@ const showLoading=()=>document.getElementById('loading-bar').style.display='bloc
 const hideLoading=()=>document.getElementById('loading-bar').style.display='none';
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type}`;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3500);}
 function formatCNPJ(v){if(!v)return'';const d=String(v).replace(/\D/g,'');return d.length===14?d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):v;}
-function normalizeCNPJ(v){return String(v||'').replace(/\D/g,'').padStart(14,'0');}
+function normalizeCNPJ(v){
+  const digits = String(v||'').replace(/\D/g,'');
+  if(!digits) return '';
+  // Se tiver 14 dígitos, usa direto. Se tiver menos, preenche à esquerda.
+  // Mas se o valor original já tinha formatação (barras, pontos), confia nos dígitos sem pad.
+  const hasFormatting = /[.\/\-]/.test(String(v));
+  if(hasFormatting) return digits; // já estava formatado, não adiciona zeros
+  return digits.padStart(14,'0');
+}
 
 // ── LOGIN ──────────────────────────────────────────────────────────
 async function doLogin(){
@@ -494,10 +502,28 @@ function renderBases(){
 
 async function deleteBase(id,e){
   e.stopPropagation();
-  if(!confirm('Excluir esta base?'))return;
+  if(!confirm('Excluir esta base? Os registros que vieram exclusivamente dela também serão removidos.'))return;
   showLoading();
-  try{await sbFetch(`bases?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':''}});BASES=BASES.filter(b=>b.id!==id);showToast('Base excluída.');renderBases();renderDashboard();}
-  catch(e){showToast('Erro: '+e.message,'error');}
+  try{
+    // 1. Registros que têm APENAS esta base como fonte → deletar
+    const soEsta = REGISTROS.filter(r => (r.fontes||[]).length===1 && r.fontes[0]===id);
+    if(soEsta.length){
+      const ids = soEsta.map(r=>`"${r.id}"`).join(',');
+      await sbFetch(`registros?id=in.(${ids})`,{method:'DELETE',headers:{'Prefer':''}});
+    }
+    // 2. Registros que têm esta base + outras → remover só a referência e os campos
+    const compartilhados = REGISTROS.filter(r => (r.fontes||[]).length>1 && r.fontes.includes(id));
+    for(const reg of compartilhados){
+      const novasFontes = reg.fontes.filter(f=>f!==id);
+      await sbFetch(`registros?id=eq.${reg.id}`,{method:'PATCH',body:JSON.stringify({fontes:novasFontes}),headers:{'Prefer':''}});
+    }
+    // 3. Deletar a base
+    await sbFetch(`bases?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':''}});
+    BASES=BASES.filter(b=>b.id!==id);
+    showToast('Base e registros exclusivos removidos.');
+    await loadAll();
+  }
+  catch(err){showToast('Erro: '+err.message,'error');}
   hideLoading();
 }
 
@@ -527,7 +553,7 @@ function onFileSelect(file){
   if(!document.getElementById('upload-nome').value)document.getElementById('upload-nome').value=file.name.replace(/\.[^.]+$/,'');
   const reader=new FileReader();
   reader.onload=e=>{
-    currentWB=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    currentWB=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false,cellText:true,cellDates:true});
     const sheets=currentWB.SheetNames;
     // populate sheet selector
     const sheetWrap=document.getElementById('sheet-selector');
@@ -541,7 +567,7 @@ function onFileSelect(file){
 
 function loadSheet(sheetName){
   if(!currentWB)return;
-  const rows=XLSX.utils.sheet_to_json(currentWB.Sheets[sheetName],{defval:''});
+  const rows=XLSX.utils.sheet_to_json(currentWB.Sheets[sheetName],{defval:'',raw:false});
   if(!rows.length){showToast('Aba vazia ou inválida','error');return;}
   fileData=rows;fileHeaders=Object.keys(rows[0]);
   const sel=document.getElementById('sel-cnpj-col');
