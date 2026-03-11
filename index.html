@@ -347,10 +347,18 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 // ── SUPABASE ───────────────────────────────────────────────────────
 const SB_URL = 'https://rsqnxihkeuevjtxgjgro.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzcW54aWhrZXVldmp0eGdqZ3JvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQ2MDUsImV4cCI6MjA4ODgzMDYwNX0.DFASN8jDHWVsvjdX-_TmyqDcJS3v-vjYYV-1juzX21w';
-const sbFetch = (path, opts={}) => fetch(`${SB_URL}/rest/v1/${path}`, {
-  headers:{'apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`,'Content-Type':'application/json','Prefer':'return=representation',...(opts.headers||{})},
-  ...opts
-}).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.message||JSON.stringify(d)); return d; });
+const sbFetch = (path, opts={}) => {
+  const {headers: extraHeaders={}, ...restOpts} = opts;
+  const headers = {
+    'apikey': SB_KEY,
+    'Authorization': `Bearer ${SB_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+    ...extraHeaders
+  };
+  return fetch(`${SB_URL}/rest/v1/${path}`, { headers, ...restOpts })
+    .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.message||JSON.stringify(d)); return d; });
+};
 
 // ── STATE ──────────────────────────────────────────────────────────
 let currentUser=null, BASES=[], REGISTROS=[], LISTAS=[], filteredRegs=[];
