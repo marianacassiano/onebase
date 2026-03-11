@@ -229,7 +229,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
   <!-- DASHBOARD -->
   <div class="view active" id="view-dashboard">
     <div class="dash-kpis">
-      <div class="kpi-card"><div class="kpi-label">Total de Empresas</div><div class="kpi-value" id="kpi-total" style="color:var(--blue)">—</div><div class="kpi-sub">CNPJs únicos na base</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total de Empresas</div><div class="kpi-value" id="kpi-total" style="color:var(--blue)">—</div><div class="kpi-sub">registros únicos na base</div></div>
       <div class="kpi-card"><div class="kpi-label">Bases Importadas</div><div class="kpi-value" id="kpi-bases" style="color:var(--orange)">—</div><div class="kpi-sub">planilhas carregadas</div></div>
       <div class="kpi-card"><div class="kpi-label">Colunas Mapeadas</div><div class="kpi-value" id="kpi-colunas" style="color:var(--teal)">—</div><div class="kpi-sub">campos disponíveis</div></div>
       <div class="kpi-card"><div class="kpi-label">Listas Criadas</div><div class="kpi-value" id="kpi-listas" style="color:var(--green)">—</div><div class="kpi-sub">para campanhas</div></div>
@@ -262,7 +262,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
   <div class="view" id="view-unificada">
     <div class="view-toprow">
       <span class="view-title">Base Unificada</span>
-      <input type="text" class="search-input" id="search-unificada" placeholder="🔍 Buscar por CNPJ ou valor..." oninput="applyFiltros()">
+      <input type="text" class="search-input" id="search-unificada" placeholder="🔍 Buscar por âncora ou valor..." oninput="applyFiltros()">
       <button class="btn-action" onclick="exportUnificada()">📥 Exportar XLSX</button>
     </div>
     <div class="filtros-panel">
@@ -303,7 +303,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
     <!-- STEP 1 -->
     <div id="step-1">
       <h2>Importar Base</h2>
-      <p class="modal-sub">Suba uma planilha .xlsx ou .csv &mdash; o CNPJ ser&aacute; a &acirc;ncora de mesclagem</p>
+      <p class="modal-sub">Suba uma planilha .xlsx ou .csv &mdash; escolha a coluna &acirc;ncora para mesclar os registros</p>
       <label class="form-label">Nome da base</label>
       <input class="form-input" type="text" id="upload-nome" placeholder="Ex: Base CRM, Clientes Ativos...">
       <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-file').click()" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">
@@ -317,7 +317,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
         <select class="form-select" id="sel-sheet" onchange="loadSheet(this.value)"></select>
       </div>
       <div class="cnpj-selector" id="cnpj-selector">
-        <label class="form-label">Qual coluna &eacute; o CNPJ?</label>
+        <label class="form-label">Qual coluna &eacute; a &acirc;ncora? <span style="font-size:10px;color:var(--gray-400);font-weight:400;">(CNPJ, CPF, ID, e-mail...)</span></label>
         <select class="form-select" id="sel-cnpj-col"></select>
         <div class="preview-wrap"><table class="preview-table"><thead id="preview-thead"></thead><tbody id="preview-tbody"></tbody></table></div>
       </div>
@@ -636,7 +636,9 @@ function loadSheet(sheetName){
   });
   fileData=rows;fileHeaders=Object.keys(rows[0]);
   const sel=document.getElementById('sel-cnpj-col');
-  sel.innerHTML=fileHeaders.map(h=>`<option value="${h}" ${h.toLowerCase().includes('cnpj')?'selected':''}>${h}</option>`).join('');
+  const anchorKeywords=['cnpj','cpf','id','codigo','code','key','chave','matricula','registro'];
+  const autoAnchor=fileHeaders.find(h=>anchorKeywords.some(k=>h.toLowerCase().includes(k)))||fileHeaders[0];
+  sel.innerHTML=fileHeaders.map(h=>`<option value="${h}" ${h===autoAnchor?'selected':''}>${h}</option>`).join('');
   document.getElementById('preview-thead').innerHTML='<tr>'+fileHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr>';
   document.getElementById('preview-tbody').innerHTML=rows.slice(0,5).map(r=>'<tr>'+fileHeaders.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('');
   document.getElementById('cnpj-selector').style.display='block';
@@ -645,12 +647,12 @@ function loadSheet(sheetName){
 
 function irStep2(){
   const cnpjCol=document.getElementById('sel-cnpj-col').value;
-  if(!cnpjCol){showToast('Selecione a coluna CNPJ','error');return;}
+  if(!cnpjCol){showToast('Selecione a coluna âncora','error');return;}
 
   // Colunas existentes na base unificada (exceto cnpj e cnpj_formatado que são fixas)
   const colsExistentes=new Set();
   BASES.forEach(b=>(b.colunas||[]).forEach(c=>{
-    if(!c.toLowerCase().includes('cnpj'))colsExistentes.add(c);
+    if(c!==cnpjCol)colsExistentes.add(c);
   }));
   const existList=[...colsExistentes];
 
@@ -733,21 +735,22 @@ async function confirmarImport(){
       importado_por:currentUser.id
     })});
 
-    // Prepara registros — valores EXATAMENTE como estão na planilha, sem transformar
+    // Prepara registros — copia EXATAMENTE o que está na planilha, sem alterar nada
     pl.textContent='Preparando dados...';pf.style.width='12%';
     const todosRegistros=[];
-    const cnpjErros=[]; // CNPJs com menos de 14 dígitos
+    const cnpjErros=[];
 
     fileData.forEach(row=>{
-      const cnpjVal=row[cnpjCol];
-      if(cnpjVal==null||cnpjVal==='')return;
-      const cnpjDigits=String(cnpjVal).replace(/\D/g,'');
-      if(!cnpjDigits)return;
+      const ancorVal=row[cnpjCol];
+      if(ancorVal==null||ancorVal==='')return;
 
-      // CNPJ inválido: menos de 14 dígitos → vai para lista de erros
-      if(cnpjDigits.length!==14){
-        const errReg={cnpj:cnpjDigits||String(cnpjVal),fontes:['CNPJ_ERROR']};
-        errReg[cnpjCol]=String(cnpjVal);
+      const ancorStr=String(ancorVal); // valor exato, sem tocar
+      const ancorDigitos=ancorStr.replace(/\D/g,''); // só para contar dígitos
+
+      // Se coluna âncora tem "cnpj" no nome e valor não tem 14 dígitos → CNPJ ERROR
+      if(cnpjCol.toLowerCase().includes('cnpj') && ancorDigitos.length!==14){
+        const errReg={cnpj:ancorStr,fontes:['CNPJ_ERROR']};
+        errReg[cnpjCol]=ancorStr;
         colsFinal.forEach(({original,destino})=>{
           const v=row[original];
           errReg[destino]=(v!=null&&v!=='')?String(v):null;
@@ -756,9 +759,9 @@ async function confirmarImport(){
         return;
       }
 
-      // CNPJ válido — usa dígitos limpos como chave interna, valor original na coluna
-      const reg={cnpj:cnpjDigits,fontes:[baseRec.id]};
-      reg[cnpjCol]=String(cnpjVal);
+      // Registro válido — chave interna = valor exato da âncora, sem transformar
+      const reg={cnpj:ancorStr,fontes:[baseRec.id]};
+      reg[cnpjCol]=ancorStr;
       colsFinal.forEach(({original,destino})=>{
         const v=row[original];
         reg[destino]=(v!=null&&v!=='')?String(v):null;
@@ -766,7 +769,6 @@ async function confirmarImport(){
       todosRegistros.push(reg);
     });
 
-    // Salva lista de erros automaticamente se houver
     if(cnpjErros.length){
       try{
         // Garante coluna cnpj_error no banco
@@ -775,13 +777,13 @@ async function confirmarImport(){
         const erroRegs=cnpjErros.map(r=>({...r,cnpj_error:'SIM',fontes:['CNPJ_ERROR']}));
         // Salva como lista separada
         await sbFetch('listas',{method:'POST',body:JSON.stringify({
-          nome:`⚠️ CNPJ ERROR — ${nome}`,
+          nome:`⚠️ ÂNCORA ERROR — ${nome}`,
           filtros:{cnpj_error:'SIM'},
           cnpjs:cnpjErros.map(r=>r.cnpj),
           total:cnpjErros.length,
           criado_por:currentUser.id
         })});
-        pl.textContent=`⚠️ ${cnpjErros.length} CNPJs inválidos salvos em lista de erro...`;
+        pl.textContent=`⚠️ ${cnpjErros.length} registros com âncora inválida salvos em lista de erro...`;
       }catch(e){console.error('Erro ao salvar lista CNPJ ERROR',e);}
     }
 
@@ -839,7 +841,7 @@ async function confirmarImport(){
 
     pf.style.width='100%';
     pl.textContent=erros?`Concluído com ${erros} erros`:'Concluído!';
-    const msgErro=cnpjErros.length?` | ⚠️ ${cnpjErros.length} CNPJs inválidos → aba Listas`:'';
+    const msgErro=cnpjErros.length?` | ⚠️ ${cnpjErros.length} âncoras inválidas → aba Listas`:'';
     showToast(`✅ ${(total-erros).toLocaleString('pt-BR')} importados!`+(erros?` ⚠️ ${erros} com erro`:'')+msgErro);
     setTimeout(()=>{closeUploadModal();loadAll();},1000);
 
