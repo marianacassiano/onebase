@@ -855,7 +855,7 @@ async function confirmarImport(){
 
 // ── BASE UNIFICADA ─────────────────────────────────────────────────
 function renderFiltros(){
-  const cols=getRegCols().filter(c=>c!=='cnpj'&&c!=='cnpj_formatado');
+  const cols=getRegCols();
   document.getElementById('filtros-cols').innerHTML=cols.slice(0,10).map(k=>`
     <div class="filtro-item">
       <label>${k}</label>
@@ -889,9 +889,9 @@ function clearFiltros(){
 }
 
 function getRegCols(){
-  // Colunas dinâmicas: tudo que não é metadado
-  const fixed=new Set(['id','fontes','created_at','updated_at']);
-  if(!REGISTROS.length)return['cnpj','cnpj_formatado'];
+  // Mostra todas as colunas exceto campos internos de sistema
+  const fixed=new Set(['id','cnpj','fontes','created_at','updated_at']);
+  if(!REGISTROS.length)return[];
   return Object.keys(REGISTROS[0]).filter(k=>!fixed.has(k));
 }
 
