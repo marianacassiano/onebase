@@ -423,11 +423,8 @@ const hideLoading=()=>document.getElementById('loading-bar').style.display='none
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type}`;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3500);}
 function formatCNPJ(v){if(!v)return'';const d=String(v).replace(/\D/g,'');return d.length===14?d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):v;}
 function normalizeCNPJ(v){
-  // Remove tudo que não é dígito
-  const digits = String(v||'').replace(/\D/g,'');
-  if(!digits || digits==='0') return '';
-  // Sempre 14 dígitos com zeros à esquerda
-  return digits.padStart(14,'0');
+  // Remove apenas não-dígitos, sem adicionar zeros
+  return String(v||'').replace(/\D/g,'');
 }
 
 // ── LOGIN ──────────────────────────────────────────────────────────
@@ -631,7 +628,7 @@ function loadSheet(sheetName){
       if(typeof raw==='number'){
         const digits=String(Math.round(raw));
         if(digits.length>=10&&digits.length<=14&&k.toLowerCase().includes('cnpj'))
-          out[k]=digits.padStart(14,'0');
+          out[k]=digits; // mantém valor original sem zeros
         else out[k]=fmtVal||String(raw);
       }else{out[k]=String(raw);}
     });
@@ -739,22 +736,54 @@ async function confirmarImport(){
     // Prepara registros — valores EXATAMENTE como estão na planilha, sem transformar
     pl.textContent='Preparando dados...';pf.style.width='12%';
     const todosRegistros=[];
+    const cnpjErros=[]; // CNPJs com menos de 14 dígitos
+
     fileData.forEach(row=>{
-      const cnpjVal=row[cnpjCol]; // valor bruto, sem alterar
+      const cnpjVal=row[cnpjCol];
       if(cnpjVal==null||cnpjVal==='')return;
-      // CNPJ interno normalizado apenas para usar como chave de unicidade
-      const cnpjKey=String(cnpjVal).replace(/\D/g,'').padStart(14,'0');
-      if(!cnpjKey||cnpjKey==='00000000000000')return;
-      const reg={cnpj:cnpjKey,fontes:[baseRec.id]};
-      // Salva o valor original do CNPJ na sua própria coluna
+      const cnpjDigits=String(cnpjVal).replace(/\D/g,'');
+      if(!cnpjDigits)return;
+
+      // CNPJ inválido: menos de 14 dígitos → vai para lista de erros
+      if(cnpjDigits.length!==14){
+        const errReg={cnpj:cnpjDigits||String(cnpjVal),fontes:['CNPJ_ERROR']};
+        errReg[cnpjCol]=String(cnpjVal);
+        colsFinal.forEach(({original,destino})=>{
+          const v=row[original];
+          errReg[destino]=(v!=null&&v!=='')?String(v):null;
+        });
+        cnpjErros.push(errReg);
+        return;
+      }
+
+      // CNPJ válido — usa dígitos limpos como chave interna, valor original na coluna
+      const reg={cnpj:cnpjDigits,fontes:[baseRec.id]};
       reg[cnpjCol]=String(cnpjVal);
-      // Demais colunas: valor exato da planilha
       colsFinal.forEach(({original,destino})=>{
         const v=row[original];
         reg[destino]=(v!=null&&v!=='')?String(v):null;
       });
       todosRegistros.push(reg);
     });
+
+    // Salva lista de erros automaticamente se houver
+    if(cnpjErros.length){
+      try{
+        // Garante coluna cnpj_error no banco
+        await sbRpc('add_column_if_not_exists',{col_name:'cnpj_error',col_type:'text'});
+        // Insere erros como registros marcados
+        const erroRegs=cnpjErros.map(r=>({...r,cnpj_error:'SIM',fontes:['CNPJ_ERROR']}));
+        // Salva como lista separada
+        await sbFetch('listas',{method:'POST',body:JSON.stringify({
+          nome:`⚠️ CNPJ ERROR — ${nome}`,
+          filtros:{cnpj_error:'SIM'},
+          cnpjs:cnpjErros.map(r=>r.cnpj),
+          total:cnpjErros.length,
+          criado_por:currentUser.id
+        })});
+        pl.textContent=`⚠️ ${cnpjErros.length} CNPJs inválidos salvos em lista de erro...`;
+      }catch(e){console.error('Erro ao salvar lista CNPJ ERROR',e);}
+    }
 
     const total=todosRegistros.length;
     let processed=0,erros=0;
@@ -810,7 +839,8 @@ async function confirmarImport(){
 
     pf.style.width='100%';
     pl.textContent=erros?`Concluído com ${erros} erros`:'Concluído!';
-    showToast(`✅ ${(total-erros).toLocaleString('pt-BR')} registros importados!`+(erros?` ⚠️ ${erros} com erro`:''));
+    const msgErro=cnpjErros.length?` | ⚠️ ${cnpjErros.length} CNPJs inválidos → aba Listas`:'';
+    showToast(`✅ ${(total-erros).toLocaleString('pt-BR')} importados!`+(erros?` ⚠️ ${erros} com erro`:'')+msgErro);
     setTimeout(()=>{closeUploadModal();loadAll();},1000);
 
   }catch(e){
