@@ -379,12 +379,10 @@ const hideLoading=()=>document.getElementById('loading-bar').style.display='none
 function showToast(msg,type='success'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type}`;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',3500);}
 function formatCNPJ(v){if(!v)return'';const d=String(v).replace(/\D/g,'');return d.length===14?d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):v;}
 function normalizeCNPJ(v){
+  // Remove tudo que não é dígito
   const digits = String(v||'').replace(/\D/g,'');
-  if(!digits) return '';
-  // Se tiver 14 dígitos, usa direto. Se tiver menos, preenche à esquerda.
-  // Mas se o valor original já tinha formatação (barras, pontos), confia nos dígitos sem pad.
-  const hasFormatting = /[.\/\-]/.test(String(v));
-  if(hasFormatting) return digits; // já estava formatado, não adiciona zeros
+  if(!digits || digits==='0') return '';
+  // Sempre 14 dígitos com zeros à esquerda
   return digits.padStart(14,'0');
 }
 
@@ -567,8 +565,34 @@ function onFileSelect(file){
 
 function loadSheet(sheetName){
   if(!currentWB)return;
-  const rows=XLSX.utils.sheet_to_json(currentWB.Sheets[sheetName],{defval:'',raw:false});
-  if(!rows.length){showToast('Aba vazia ou inválida','error');return;}
+  const ws=currentWB.Sheets[sheetName];
+  // Lê com raw:true para pegar o valor numérico original do Excel
+  // e também com raw:false para ter o texto formatado — usaremos os dois
+  const rowsRaw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+  const rowsFmt=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+  if(!rowsRaw.length){showToast('Aba vazia ou inválida','error');return;}
+  // Mescla: para cada célula, se o valor raw for número e o fmt tiver formatação de CNPJ, usa o fmt
+  // Caso contrário usa raw (preserva strings originais)
+  const rows=rowsRaw.map((r,i)=>{
+    const fmt=rowsFmt[i]||{};
+    const out={};
+    Object.keys(r).forEach(k=>{
+      const raw=r[k], fmtVal=String(fmt[k]||'');
+      // Se for número e o campo parece CNPJ, reconstrói com zeros à esquerda
+      if(typeof raw==='number'){
+        const digits=String(Math.round(raw));
+        // CNPJ tem 14 dígitos
+        if(digits.length>=10 && digits.length<=14 && k.toLowerCase().includes('cnpj')){
+          out[k]=digits.padStart(14,'0');
+        } else {
+          out[k]=fmtVal||String(raw);
+        }
+      } else {
+        out[k]=raw;
+      }
+    });
+    return out;
+  });
   fileData=rows;fileHeaders=Object.keys(rows[0]);
   const sel=document.getElementById('sel-cnpj-col');
   sel.innerHTML=fileHeaders.map(h=>`<option value="${h}" ${h.toLowerCase().includes('cnpj')?'selected':''}>${h}</option>`).join('');
