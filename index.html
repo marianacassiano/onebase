@@ -710,37 +710,45 @@ async function confirmarImport(){
   showLoading();
 
   try{
-    // Resolve nomes finais das colunas
+    // Resolve nomes finais — mantém o nome original da coluna, sem transformar
     const colsFinal=[]; // [{original, destino}]
     Object.entries(mapeamento).forEach(([orig,dest])=>{
       if(dest==='__ignorar__')return;
-      const destino=(dest==='__novo__'?orig:dest).toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+      const destino=dest==='__novo__'?orig:dest;
       colsFinal.push({original:orig,destino});
     });
 
     pl.textContent='Criando colunas no banco...';pf.style.width='5%';
 
-    // Chama função do Supabase para criar colunas que não existem
+    // Cria colunas no Supabase com nome exato
     for(const {destino} of colsFinal){
       await sbRpc('add_column_if_not_exists',{col_name:destino,col_type:'text'});
     }
+    // A coluna CNPJ também (chave âncora)
+    await sbRpc('add_column_if_not_exists',{col_name:cnpjCol,col_type:'text'});
 
     pl.textContent='Criando registro da base...';pf.style.width='10%';
     const nomesDestino=colsFinal.map(c=>c.destino);
     const [baseRec]=await sbFetch('bases',{method:'POST',body:JSON.stringify({
-      nome,arquivo:nome,
-      colunas:['cnpj','cnpj_formatado',...nomesDestino],
+      nome, arquivo:nome,
+      colunas:[cnpjCol,...nomesDestino],
       total_linhas:fileData.length,
       importado_por:currentUser.id
     })});
 
-    // Prepara registros
+    // Prepara registros — valores EXATAMENTE como estão na planilha, sem transformar
     pl.textContent='Preparando dados...';pf.style.width='12%';
     const todosRegistros=[];
     fileData.forEach(row=>{
-      const cnpjRaw=normalizeCNPJ(row[cnpjCol]);
-      if(!cnpjRaw||cnpjRaw==='00000000000000')return;
-      const reg={cnpj:cnpjRaw,cnpj_formatado:formatCNPJ(cnpjRaw),fontes:[baseRec.id]};
+      const cnpjVal=row[cnpjCol]; // valor bruto, sem alterar
+      if(cnpjVal==null||cnpjVal==='')return;
+      // CNPJ interno normalizado apenas para usar como chave de unicidade
+      const cnpjKey=String(cnpjVal).replace(/\D/g,'').padStart(14,'0');
+      if(!cnpjKey||cnpjKey==='00000000000000')return;
+      const reg={cnpj:cnpjKey,fontes:[baseRec.id]};
+      // Salva o valor original do CNPJ na sua própria coluna
+      reg[cnpjCol]=String(cnpjVal);
+      // Demais colunas: valor exato da planilha
       colsFinal.forEach(({original,destino})=>{
         const v=row[original];
         reg[destino]=(v!=null&&v!=='')?String(v):null;
@@ -767,14 +775,10 @@ async function confirmarImport(){
       chunk.forEach(reg=>{
         if(existMap[reg.cnpj]){
           const ex=existMap[reg.cnpj];
-          // merge: mantém dados existentes, sobrescreve com novos onde não nulo
           const merged={...ex};
           Object.entries(reg).forEach(([k,v])=>{
-            if(k==='fontes'){
-              merged.fontes=[...new Set([...(ex.fontes||[]),baseRec.id])];
-            } else if(v!=null&&v!==''){
-              merged[k]=v;
-            }
+            if(k==='fontes') merged.fontes=[...new Set([...(ex.fontes||[]),baseRec.id])];
+            else if(v!=null&&v!=='') merged[k]=v;
           });
           merged.updated_at=new Date().toISOString();
           toUpdate.push(merged);
