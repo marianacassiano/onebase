@@ -156,6 +156,19 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 .preview-table th{background:var(--gray-100);padding:7px 10px;text-align:left;font-weight:700;color:var(--gray-600);position:sticky;top:0;white-space:nowrap;}
 .preview-table td{padding:5px 10px;border-top:1px solid var(--gray-100);font-family:'DM Mono',monospace;white-space:nowrap;}
 .cnpj-selector{display:none;margin-top:16px;}
+.step-indicator{display:flex;gap:8px;align-items:center;margin-bottom:20px;}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--gray-200);}
+.step-dot.active{background:var(--blue);}
+.col-map-row{display:grid;grid-template-columns:1fr 24px 1fr;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-100);}
+.col-map-row:last-child{border-bottom:none;}
+.col-map-source{font-size:13px;font-weight:600;color:var(--gray-800);background:var(--gray-50);padding:8px 12px;border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.col-map-arrow{color:var(--gray-400);font-size:16px;text-align:center;}
+.col-map-dest{padding:7px 10px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:12px;color:var(--gray-800);background:white;outline:none;width:100%;}
+.col-map-dest:focus{border-color:var(--blue-light);}
+.col-map-dest.new-col{border-color:var(--green);color:var(--green);font-weight:600;}
+.col-map-dest.ignore-col{border-color:var(--gray-200);color:var(--gray-400);}
+.col-map-header{display:grid;grid-template-columns:1fr 24px 1fr;gap:10px;padding:0 0 8px;margin-bottom:4px;border-bottom:2px solid var(--gray-200);}
+.col-map-header span{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);}
 .cnpj-selector label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);display:block;margin-bottom:8px;}
 .pagination{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-top:1px solid var(--gray-200);}
 .pag-info{font-size:12px;color:var(--gray-400);font-family:'DM Mono',monospace;}
@@ -284,34 +297,54 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 
 <!-- MODAL UPLOAD -->
 <div class="modal-overlay" id="modal-upload">
-  <div class="modal" style="width:620px;">
-    <button class="modal-close" onclick="closeUploadModal()">✕</button>
-    <h2>Importar Base</h2>
-    <p class="modal-sub">Suba uma planilha .xlsx ou .csv — o CNPJ será usado como âncora para mesclar</p>
-    <label class="form-label">Nome da base</label>
-    <input class="form-input" type="text" id="upload-nome" placeholder="Ex: Base CRM, Clientes Ativos, Prospecção Q2...">
-    <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-file').click()" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">
-      <input type="file" id="upload-file" accept=".xlsx,.xls,.csv" onchange="onFileSelect(this.files[0])">
-      <div class="upload-zone-icon">📊</div>
-      <div class="upload-zone-title" id="upload-zone-title">Arraste ou clique para selecionar</div>
-      <div class="upload-zone-sub">.xlsx, .xls ou .csv</div>
+  <div class="modal" style="width:680px;">
+    <button class="modal-close" onclick="closeUploadModal()">&#x2715;</button>
+
+    <!-- STEP 1 -->
+    <div id="step-1">
+      <h2>Importar Base</h2>
+      <p class="modal-sub">Suba uma planilha .xlsx ou .csv &mdash; o CNPJ ser&aacute; a &acirc;ncora de mesclagem</p>
+      <label class="form-label">Nome da base</label>
+      <input class="form-input" type="text" id="upload-nome" placeholder="Ex: Base CRM, Clientes Ativos...">
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-file').click()" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave(event)">
+        <input type="file" id="upload-file" accept=".xlsx,.xls,.csv" onchange="onFileSelect(this.files[0])">
+        <div class="upload-zone-icon">&#x1F4CA;</div>
+        <div class="upload-zone-title" id="upload-zone-title">Arraste ou clique para selecionar</div>
+        <div class="upload-zone-sub">.xlsx, .xls ou .csv</div>
+      </div>
+      <div id="sheet-selector" style="display:none;margin-top:16px;">
+        <label class="form-label">Qual aba da planilha?</label>
+        <select class="form-select" id="sel-sheet" onchange="loadSheet(this.value)"></select>
+      </div>
+      <div class="cnpj-selector" id="cnpj-selector">
+        <label class="form-label">Qual coluna &eacute; o CNPJ?</label>
+        <select class="form-select" id="sel-cnpj-col"></select>
+        <div class="preview-wrap"><table class="preview-table"><thead id="preview-thead"></thead><tbody id="preview-tbody"></tbody></table></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeUploadModal()">Cancelar</button>
+        <button class="btn-save" id="btn-step2" onclick="irStep2()" style="display:none;">MAPEAR COLUNAS &#x2192;</button>
+      </div>
     </div>
-    <div id="sheet-selector" style="display:none;margin-top:16px;">
-      <label class="form-label">Qual aba da planilha?</label>
-      <select class="form-select" id="sel-sheet" onchange="loadSheet(this.value)"></select>
-    </div>
-    <div class="cnpj-selector" id="cnpj-selector">
-      <label class="form-label">Qual coluna é o CNPJ?</label>
-      <select class="form-select" id="sel-cnpj-col"></select>
-      <div class="preview-wrap"><table class="preview-table"><thead id="preview-thead"></thead><tbody id="preview-tbody"></tbody></table></div>
-    </div>
-    <div class="progress-wrap" id="progress-wrap">
-      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-      <div class="progress-label" id="progress-label">Processando...</div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeUploadModal()">Cancelar</button>
-      <button class="btn-save" id="btn-import" onclick="confirmarImport()" style="display:none;">IMPORTAR</button>
+
+    <!-- STEP 2 -->
+    <div id="step-2" style="display:none;">
+      <h2>Mapeamento de Colunas</h2>
+      <p class="modal-sub">Para cada coluna da planilha, defina o que fazer na base unificada</p>
+      <div class="col-map-header">
+        <span>Coluna na planilha</span>
+        <span></span>
+        <span>Destino na base unificada</span>
+      </div>
+      <div id="col-mapping-list" style="max-height:360px;overflow-y:auto;"></div>
+      <div class="progress-wrap" id="progress-wrap" style="margin-top:16px;">
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label">Processando...</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="voltarStep1()">&#x2190; Voltar</button>
+        <button class="btn-save" id="btn-import" onclick="confirmarImport()">IMPORTAR</button>
+      </div>
     </div>
   </div>
 </div>
@@ -534,37 +567,41 @@ async function deleteBase(id,e){
 
 // ── UPLOAD ─────────────────────────────────────────────────────────
 function openUploadModal(){
-  fileData=null;fileHeaders=[];
+  fileData=null;fileHeaders=[];currentWB=null;
   document.getElementById('upload-nome').value='';
   document.getElementById('upload-zone-title').textContent='Arraste ou clique para selecionar';
   document.getElementById('cnpj-selector').style.display='none';
   document.getElementById('sheet-selector').style.display='none';
-  document.getElementById('btn-import').style.display='none';
-  currentWB=null;
+  document.getElementById('btn-step2').style.display='none';
   document.getElementById('progress-wrap').style.display='none';
   document.getElementById('upload-file').value='';
+  document.getElementById('step-1').style.display='block';
+  document.getElementById('step-2').style.display='none';
   document.getElementById('modal-upload').classList.add('open');
 }
 function closeUploadModal(){document.getElementById('modal-upload').classList.remove('open');}
+function voltarStep1(){
+  document.getElementById('step-1').style.display='block';
+  document.getElementById('step-2').style.display='none';
+}
 function onDragOver(e){e.preventDefault();document.getElementById('upload-zone').classList.add('dragover');}
 function onDragLeave(){document.getElementById('upload-zone').classList.remove('dragover');}
 function onDrop(e){e.preventDefault();onDragLeave();const f=e.dataTransfer.files[0];if(f)onFileSelect(f);}
 
-let currentWB = null;
+let currentWB=null;
 
 function onFileSelect(file){
   if(!file)return;
   document.getElementById('upload-zone-title').textContent='📄 '+file.name;
-  if(!document.getElementById('upload-nome').value)document.getElementById('upload-nome').value=file.name.replace(/\.[^.]+$/,'');
+  if(!document.getElementById('upload-nome').value)
+    document.getElementById('upload-nome').value=file.name.replace(/\.[^.]+$/,'');
   const reader=new FileReader();
   reader.onload=e=>{
     currentWB=XLSX.read(new Uint8Array(e.target.result),{type:'array',raw:false,cellText:true,cellDates:true});
     const sheets=currentWB.SheetNames;
-    // populate sheet selector
-    const sheetWrap=document.getElementById('sheet-selector');
     const sheetSel=document.getElementById('sel-sheet');
-    sheetSel.innerHTML=sheets.map((s,i)=>`<option value="${s}">${s}</option>`).join('');
-    sheetWrap.style.display=sheets.length>1?'block':'none';
+    sheetSel.innerHTML=sheets.map(s=>`<option value="${s}">${s}</option>`).join('');
+    document.getElementById('sheet-selector').style.display=sheets.length>1?'block':'none';
     loadSheet(sheets[0]);
   };
   reader.readAsArrayBuffer(file);
@@ -573,30 +610,19 @@ function onFileSelect(file){
 function loadSheet(sheetName){
   if(!currentWB)return;
   const ws=currentWB.Sheets[sheetName];
-  // Lê com raw:true para pegar o valor numérico original do Excel
-  // e também com raw:false para ter o texto formatado — usaremos os dois
   const rowsRaw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
   const rowsFmt=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
   if(!rowsRaw.length){showToast('Aba vazia ou inválida','error');return;}
-  // Mescla: para cada célula, se o valor raw for número e o fmt tiver formatação de CNPJ, usa o fmt
-  // Caso contrário usa raw (preserva strings originais)
   const rows=rowsRaw.map((r,i)=>{
-    const fmt=rowsFmt[i]||{};
-    const out={};
+    const fmt=rowsFmt[i]||{};const out={};
     Object.keys(r).forEach(k=>{
-      const raw=r[k], fmtVal=String(fmt[k]||'');
-      // Se for número e o campo parece CNPJ, reconstrói com zeros à esquerda
+      const raw=r[k],fmtVal=String(fmt[k]||'');
       if(typeof raw==='number'){
         const digits=String(Math.round(raw));
-        // CNPJ tem 14 dígitos
-        if(digits.length>=10 && digits.length<=14 && k.toLowerCase().includes('cnpj')){
+        if(digits.length>=10&&digits.length<=14&&k.toLowerCase().includes('cnpj'))
           out[k]=digits.padStart(14,'0');
-        } else {
-          out[k]=fmtVal||String(raw);
-        }
-      } else {
-        out[k]=raw;
-      }
+        else out[k]=fmtVal||String(raw);
+      }else{out[k]=String(raw);}
     });
     return out;
   });
@@ -606,58 +632,121 @@ function loadSheet(sheetName){
   document.getElementById('preview-thead').innerHTML='<tr>'+fileHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr>';
   document.getElementById('preview-tbody').innerHTML=rows.slice(0,5).map(r=>'<tr>'+fileHeaders.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('');
   document.getElementById('cnpj-selector').style.display='block';
-  document.getElementById('btn-import').style.display='inline-flex';
+  document.getElementById('btn-step2').style.display='inline-flex';
+}
+
+function irStep2(){
+  const cnpjCol=document.getElementById('sel-cnpj-col').value;
+  if(!cnpjCol){showToast('Selecione a coluna CNPJ','error');return;}
+
+  // Colunas existentes na base unificada (exceto cnpj e cnpj_formatado que são fixas)
+  const colsExistentes=new Set();
+  BASES.forEach(b=>(b.colunas||[]).forEach(c=>{
+    if(!c.toLowerCase().includes('cnpj'))colsExistentes.add(c);
+  }));
+  const existList=[...colsExistentes];
+
+  // Colunas da planilha (exceto a de CNPJ)
+  const colsPlanilha=fileHeaders.filter(h=>h!==cnpjCol);
+
+  const list=document.getElementById('col-mapping-list');
+  list.innerHTML=colsPlanilha.map(col=>{
+    // match automático por nome (case-insensitive)
+    const matchExato=existList.find(e=>e.toLowerCase()===col.toLowerCase());
+    const matchSelecionado=matchExato||'__novo__';
+
+    const optsExist=existList.map(e=>
+      `<option value="${e}" ${matchSelecionado===e?'selected':''}>${e}</option>`
+    ).join('');
+
+    return `<div class="col-map-row" data-col="${col}">
+      <div class="col-map-source" title="${col}">${col}</div>
+      <div class="col-map-arrow">→</div>
+      <select class="col-map-dest ${matchSelecionado==='__novo__'?'new-col':''}" data-source="${col}" onchange="onMapChange(this)">
+        <option value="__novo__" ${matchSelecionado==='__novo__'?'selected':''}>✨ Criar coluna: "${col}"</option>
+        <option value="__ignorar__">🚫 Ignorar esta coluna</option>
+        <optgroup label="── Mapear para existente ──">${optsExist}</optgroup>
+      </select>
+    </div>`;
+  }).join('');
+
+  document.getElementById('step-1').style.display='none';
+  document.getElementById('step-2').style.display='block';
+  document.getElementById('progress-wrap').style.display='none';
+}
+
+function onMapChange(sel){
+  sel.className='col-map-dest';
+  if(sel.value==='__novo__')sel.classList.add('new-col');
+  else if(sel.value==='__ignorar__')sel.classList.add('ignore-col');
 }
 
 async function confirmarImport(){
-  if(!fileData){showToast('Selecione um arquivo','error');return;}
   const nome=document.getElementById('upload-nome').value.trim()||'Base sem nome';
   const cnpjCol=document.getElementById('sel-cnpj-col').value;
-  const pw=document.getElementById('progress-wrap'),pf=document.getElementById('progress-fill'),pl=document.getElementById('progress-label');
+
+  // Lê o mapeamento definido pelo usuário
+  const mapeamento={}; // { colOriginal: '__ignorar__' | '__novo__' | 'nomeExistente' }
+  document.querySelectorAll('#col-mapping-list .col-map-dest').forEach(sel=>{
+    mapeamento[sel.dataset.source]=sel.value;
+  });
+
+  const pw=document.getElementById('progress-wrap');
+  const pf=document.getElementById('progress-fill');
+  const pl=document.getElementById('progress-label');
   pw.style.display='block';
   document.getElementById('btn-import').disabled=true;
   showLoading();
+
   try{
-    const colunas=fileHeaders.filter(h=>h!==cnpjCol);
+    // Colunas que serão salvas (resolve nomes finais)
+    const colsFinal=[]; // [{original, destino}]
+    Object.entries(mapeamento).forEach(([orig,dest])=>{
+      if(dest==='__ignorar__')return;
+      colsFinal.push({original:orig, destino:dest==='__novo__'?orig:dest});
+    });
+
+    const nomesDestino=colsFinal.map(c=>c.destino);
     pl.textContent='Criando registro da base...';pf.style.width='3%';
 
     const [baseRec]=await sbFetch('bases',{method:'POST',body:JSON.stringify({
-      nome, arquivo:nome, colunas:[cnpjCol,...colunas],
-      total_linhas:fileData.length, importado_por:currentUser.id
+      nome, arquivo:nome,
+      colunas:['cnpj','cnpj_formatado',...nomesDestino],
+      total_linhas:fileData.length,
+      importado_por:currentUser.id
     })});
 
-    // Monta todos os registros válidos
+    // Prepara registros
     pl.textContent='Preparando dados...';pf.style.width='8%';
     const todosRegistros=[];
     fileData.forEach(row=>{
-      const cnpj=normalizeCNPJ(row[cnpjCol]);
-      if(!cnpj||cnpj==='00000000000000')return;
-      const dados={};
-      colunas.forEach(col=>{
-        const v=row[col];
-        if(v!=null&&v!=='')dados[col]=String(v);
+      const cnpjRaw=normalizeCNPJ(row[cnpjCol]);
+      if(!cnpjRaw||cnpjRaw==='00000000000000')return;
+      const cnpjFmt=formatCNPJ(cnpjRaw);
+      const dados={cnpj_formatado:cnpjFmt};
+      colsFinal.forEach(({original,destino})=>{
+        const v=row[original];
+        if(v!=null&&v!=='')dados[destino]=String(v);
       });
-      todosRegistros.push({cnpj,dados});
+      todosRegistros.push({cnpj:cnpjRaw,dados});
     });
 
     const total=todosRegistros.length;
-    let processed=0, erros=0;
-    const CHUNK=100; // menor para evitar payload grande
+    let processed=0,erros=0;
+    const CHUNK=100;
 
     for(let i=0;i<todosRegistros.length;i+=CHUNK){
       const chunk=todosRegistros.slice(i,i+CHUNK);
       const cnpjs=chunk.map(r=>r.cnpj);
 
-      // Busca existentes neste chunk
       let existentes=[];
       try{
         existentes=await sbFetch(`registros?cnpj=in.(${cnpjs.map(c=>`"${c}"`).join(',')})&select=id,cnpj,dados,fontes`);
-      }catch(e){ existentes=[]; }
+      }catch(e){existentes=[];}
 
-      const existMap={};
-      existentes.forEach(r=>existMap[r.cnpj]=r);
+      const existMap={};existentes.forEach(r=>existMap[r.cnpj]=r);
 
-      const toInsert=[], toUpdate=[];
+      const toInsert=[],toUpdate=[];
       chunk.forEach(({cnpj,dados})=>{
         if(existMap[cnpj]){
           const ex=existMap[cnpj];
@@ -672,18 +761,11 @@ async function confirmarImport(){
         }
       });
 
-      // INSERT em lote
       if(toInsert.length){
         try{
-          await sbFetch('registros',{
-            method:'POST',
-            body:JSON.stringify(toInsert),
-            headers:{'Prefer':'return=minimal'}
-          });
-        }catch(e){ erros+=toInsert.length; console.error('Insert erro chunk '+i, e.message); }
+          await sbFetch('registros',{method:'POST',body:JSON.stringify(toInsert),headers:{'Prefer':'return=minimal'}});
+        }catch(e){erros+=toInsert.length;console.error('insert err',e.message);}
       }
-
-      // UPDATE um a um (mais confiável)
       for(const upd of toUpdate){
         try{
           await sbFetch(`registros?id=eq.${upd.id}`,{
@@ -691,26 +773,27 @@ async function confirmarImport(){
             body:JSON.stringify({dados:upd.dados,fontes:upd.fontes,updated_at:upd.updated_at}),
             headers:{'Prefer':'return=minimal'}
           });
-        }catch(e){ erros++; }
+        }catch(e){erros++;}
       }
 
       processed+=chunk.length;
-      const pct=Math.round(processed/total*90)+8;
-      pf.style.width=pct+'%';
+      pf.style.width=Math.round(processed/total*90+8)+'%';
       pl.textContent=`Importando ${processed.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}...${erros?` (${erros} erros)`:''}`;
     }
 
     pf.style.width='100%';
-    pl.textContent=erros?`Concluído com ${erros} erros. Verifique o console.`:'Concluído!';
+    pl.textContent=erros?`Concluído com ${erros} erros`:'Concluído!';
     showToast(`✅ ${(total-erros).toLocaleString('pt-BR')} registros importados!`+(erros?` ⚠️ ${erros} com erro`:''));
     setTimeout(()=>{closeUploadModal();loadAll();},1000);
+
   }catch(e){
-    showToast('Erro na importação: '+e.message,'error');
+    showToast('Erro: '+e.message,'error');
     console.error(e);
   }
   document.getElementById('btn-import').disabled=false;
   hideLoading();
 }
+
 // ── BASE UNIFICADA ─────────────────────────────────────────────────
 function renderFiltros(){
   const keys=new Set();
