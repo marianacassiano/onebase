@@ -488,12 +488,6 @@ async function loadAll(){
       sbFetch('listas?select=*&order=created_at.desc')
     ]);
     REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
-    // Garante que r.dados seja sempre objeto (Supabase às vezes retorna JSONB como string)
-    REGISTROS=REGISTROS.map(r=>{
-      if(typeof r.dados==='string'){try{r.dados=JSON.parse(r.dados);}catch(e){r.dados={};}}
-      if(!r.dados||typeof r.dados!=='object')r.dados={};
-      return r;
-    });
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
@@ -927,7 +921,7 @@ function applyFiltros(){
       if(!rowStr.includes(search))return false;
     }
     for(const {col,op,val} of regras){
-      const cell=String(col==='cnpj'?(r.cnpj||''):((r.dados||{})[col]??'')).toLowerCase();
+      const cell=String(r[col]??'').toLowerCase();
       if(op==='contem'&&!cell.includes(val))return false;
       if(op==='igual'&&cell!==val)return false;
       if(op==='comeca'&&!cell.startsWith(val))return false;
@@ -946,19 +940,15 @@ function clearFiltros(){
 }
 
 function getRegCols(){
+  const SYSTEM=['id','fontes','created_at','updated_at'];
   if(!REGISTROS.length)return[];
-  // Percorre TODOS os registros para garantir que nenhuma coluna seja omitida
+  // Coleta TODAS as chaves de TODOS os registros (registros de bases diferentes têm colunas diferentes)
   const allKeysSet=new Set();
-  REGISTROS.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeysSet.add(k)));
-  const allKeys=[...allKeysSet];
-  // Remove duplicatas de capitalização: mantém a versão com letras maiúsculas
-  const filtered=allKeys.filter(k=>{
-    const hasUpperVersion=allKeys.some(k2=>k2!==k && k2.toLowerCase()===k.toLowerCase());
-    if(hasUpperVersion && k===k.toLowerCase()) return false;
-    return true;
-  });
-  // cnpj sempre primeiro
-  return ['cnpj',...filtered];
+  REGISTROS.forEach(r=>Object.keys(r).forEach(k=>{if(!SYSTEM.includes(k))allKeysSet.add(k);}));
+  // cnpj e cnpj_formatado primeiro, depois o resto em ordem
+  const priority=['cnpj','cnpj_formatado'];
+  const rest=[...allKeysSet].filter(k=>!priority.includes(k)).sort();
+  return [...priority.filter(k=>allKeysSet.has(k)||k==='cnpj'),...rest];
 }
 
 function renderUnificada(){
@@ -985,7 +975,7 @@ function renderUnificada(){
     document.getElementById('tbl-empty').style.display='none';
     document.getElementById('tbl-body').innerHTML=pageRows.map(r=>{
       const cells=cols.map(c=>{
-        const val=c==='cnpj'?formatCNPJ(r.cnpj):((r.dados||{})[c]??'');
+        const val=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??'');
         return`<td class="${c==='cnpj'?'cnpj-col':''}">${val}</td>`;
       });
       const fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return`<span class="fonte-tag">${b?b.nome:fid.substring(0,6)}</span>`;}).join('');
@@ -1011,8 +1001,8 @@ function exportUnificada(){
   if(!filteredRegs.length){showToast('Nenhum dado para exportar','error');return;}
   const cols=getRegCols();
   const rows=filteredRegs.map(r=>{
-    const obj={cnpj:formatCNPJ(r.cnpj)};
-    cols.filter(c=>c!=='cnpj').forEach(c=>obj[c]=(r.dados||{})[c]??'');
+    const obj={};
+    cols.forEach(c=>obj[c]=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??''));
     obj.fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return b?b.nome:fid;}).join(', ');
     return obj;
   });
