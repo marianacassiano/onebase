@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -481,16 +482,11 @@ async function fetchAll(path){
 async function loadAll(){
   showLoading();
   try{
-    showToast('Carregando bases...');
-    BASES=await sbFetch('bases?select=*&order=created_at.desc');
-    showToast(`Bases: ${BASES.length}`);
-    
-    LISTAS=await sbFetch('listas?select=*&order=created_at.desc');
-    showToast(`Listas: ${LISTAS.length}`);
-
-    showToast('Carregando registros...');
+    [BASES,LISTAS]=await Promise.all([
+      sbFetch('bases?select=*&order=created_at.desc'),
+      sbFetch('listas?select=*&order=created_at.desc')
+    ]);
     REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
-    showToast(`Registros: ${REGISTROS.length}`);
     
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
@@ -905,10 +901,17 @@ function clearFiltros(){
 }
 
 function getRegCols(){
-  // Mostra todas as colunas exceto campos internos de sistema
-  const fixed=new Set(['id','cnpj','fontes','created_at','updated_at']);
+  const fixed=new Set(['id','cnpj','cnpj_formatado','fontes','created_at','updated_at']);
   if(!REGISTROS.length)return[];
-  return Object.keys(REGISTROS[0]).filter(k=>!fixed.has(k));
+  const allKeys=Object.keys(REGISTROS[0]).filter(k=>!fixed.has(k));
+  // Remove colunas duplicadas: se existe versão com Case Original, ignora a versão lowercase
+  const lowerKeys=new Set(allKeys.map(k=>k.toLowerCase()));
+  return allKeys.filter(k=>{
+    // Se esta chave é lowercase e existe uma versão com maiúsculas, pula
+    const hasUpperVersion=allKeys.some(k2=>k2!==k && k2.toLowerCase()===k.toLowerCase());
+    if(hasUpperVersion && k===k.toLowerCase()) return false;
+    return true;
+  });
 }
 
 function renderUnificada(){
