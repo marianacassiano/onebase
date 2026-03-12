@@ -108,6 +108,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 .data-table td.cnpj-col{font-weight:700;color:var(--blue);}
 .table-empty{padding:48px;text-align:center;color:var(--gray-400);font-size:13px;}
 .fonte-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-right:2px;background:var(--blue-pale);color:var(--blue);}
+.fora-crm-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#FFF3E0;color:#E65100;border:1px solid #FFB74D;}
 .listas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
 .lista-card{background:white;border-radius:14px;padding:20px;box-shadow:0 1px 6px rgba(0,0,0,.06);}
 .lista-card-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
@@ -487,7 +488,43 @@ async function loadAll(){
       sbFetch('bases?select=*&order=created_at.desc'),
       sbFetch('listas?select=*&order=created_at.desc')
     ]);
-    REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
+    // Carrega registros da tabela oficial rdcrm_empresas como base primária
+    // e mescla com registros extras da tabela registros
+    const [rdcrmRows, regRows] = await Promise.all([
+      fetchAll('rdcrm_empresas?select=*&order=cnpj.asc'),
+      fetchAll('registros?select=*&order=created_at.asc')
+    ]);
+
+    // Monta mapa dos extras pelo CNPJ normalizado
+    const extrasMap={};
+    regRows.forEach(r=>{
+      const key=String(r.cnpj||'').replace(/\D/g,'');
+      if(key) extrasMap[key]=r;
+    });
+
+    // Mescla: rdcrm é base, campos dos extras completam (sem sobrescrever)
+    REGISTROS=rdcrmRows.map(r=>{
+      const key=String(r.cnpj||'').replace(/\D/g,'');
+      const extra=extrasMap[key]||{};
+      const merged={...r};
+      // Campos do extra entram APENAS se não existem no rdcrm
+      Object.entries(extra).forEach(([k,v])=>{
+        if(!['id','created_at','updated_at'].includes(k) && (merged[k]==null||merged[k]==='') && v!=null && v!=='')
+          merged[k]=v;
+      });
+      // Fontes: combina as duas
+      merged.fontes=[...new Set([...(r.fontes||[]),...(extra.fontes||[])])];
+      // Registros do rdcrm NUNCA são FORA DO CRM
+      merged.fora_do_crm=null;
+      delete extrasMap[key]; // marca como processado
+      return merged;
+    });
+
+    // CNPJs que existem só nos extras (não estão no rdcrm) → FORA DO CRM
+    Object.values(extrasMap).forEach(r=>{
+      REGISTROS.push({...r, fora_do_crm:'SIM'});
+    });
+
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
@@ -803,30 +840,69 @@ async function confirmarImport(){
     let processed=0,erros=0;
     const CHUNK=100;
 
+    // Garante coluna fora_do_crm na tabela registros
+    await sbRpc('add_column_if_not_exists',{col_name:'fora_do_crm',col_type:'text'});
+
     for(let i=0;i<todosRegistros.length;i+=CHUNK){
       const chunk=todosRegistros.slice(i,i+CHUNK);
-      const cnpjs=chunk.map(r=>r.cnpj);
 
+      // Normaliza CNPJs para busca (só dígitos)
+      const cnpjsNorm=chunk.map(r=>String(r.cnpj||'').replace(/\D/g,''));
+
+      // ── Verifica quais CNPJs existem na tabela oficial rdcrm_empresas ──
+      let rdcrmExist=[];
+      try{
+        rdcrmExist=await sbFetch(
+          `rdcrm_empresas?cnpj=in.(${cnpjsNorm.map(c=>`"${c}"`).join(',')})&select=cnpj`
+        );
+      }catch(e){rdcrmExist=[];}
+      const rdcrmSet=new Set(rdcrmExist.map(r=>String(r.cnpj||'').replace(/\D/g,'')));
+
+      // ── Verifica existência na tabela registros ──
       let existentes=[];
       try{
-        existentes=await sbFetch(`registros?cnpj=in.(${cnpjs.map(c=>`"${c}"`).join(',')})&select=*`);
+        existentes=await sbFetch(
+          `registros?cnpj=in.(${cnpjsNorm.map(c=>`"${c}"`).join(',')})&select=*`
+        );
       }catch(e){existentes=[];}
-
-      const existMap={};existentes.forEach(r=>existMap[r.cnpj]=r);
+      const existMap={};
+      existentes.forEach(r=>existMap[String(r.cnpj||'').replace(/\D/g,'')]=r);
 
       const toInsert=[],toUpdate=[];
-      chunk.forEach(reg=>{
-        if(existMap[reg.cnpj]){
-          const ex=existMap[reg.cnpj];
+      chunk.forEach((reg,idx)=>{
+        const keyNorm=cnpjsNorm[idx];
+        // Tag FORA DO CRM se CNPJ não existe na tabela oficial
+        const foraCRM=rdcrmSet.has(keyNorm)?null:'SIM';
+
+        if(existMap[keyNorm]){
+          // Já existe em registros → atualiza mesclando campos
+          const ex=existMap[keyNorm];
           const merged={...ex};
           Object.entries(reg).forEach(([k,v])=>{
             if(k==='fontes') merged.fontes=[...new Set([...(ex.fontes||[]),baseRec.id])];
             else if(v!=null&&v!=='') merged[k]=v;
           });
+          // Sempre aplica FORA DO CRM se não está no rdcrm (independente do estado anterior)
+          merged.fora_do_crm=foraCRM?'SIM':null;
           merged.updated_at=new Date().toISOString();
           toUpdate.push(merged);
+        }else if(rdcrmSet.has(keyNorm)){
+          // Existe no rdcrm mas não em registros → atualiza rdcrm_empresas com os novos campos
+          const rdcrmUpd={};
+          Object.entries(reg).forEach(([k,v])=>{
+            if(!['id','cnpj','fontes','created_at','updated_at'].includes(k)&&v!=null&&v!=='')
+              rdcrmUpd[k]=v;
+          });
+          if(Object.keys(rdcrmUpd).length){
+            sbFetch(`rdcrm_empresas?cnpj=eq.${keyNorm}`,{
+              method:'PATCH',body:JSON.stringify(rdcrmUpd),headers:{'Prefer':'return=minimal'}
+            }).catch(e=>console.warn('rdcrm patch err',e));
+          }
+          // Também salva em registros para rastrear a fonte
+          toInsert.push({...reg,cnpj:keyNorm,fontes:[baseRec.id]});
         }else{
-          toInsert.push(reg);
+          // FORA DO CRM: salva em registros com tag
+          toInsert.push({...reg,cnpj:keyNorm,fontes:[baseRec.id],fora_do_crm:'SIM'});
         }
       });
 
@@ -839,9 +915,7 @@ async function confirmarImport(){
         try{
           const {id,...fields}=upd;
           await sbFetch(`registros?id=eq.${id}`,{
-            method:'PATCH',
-            body:JSON.stringify(fields),
-            headers:{'Prefer':'return=minimal'}
+            method:'PATCH',body:JSON.stringify(fields),headers:{'Prefer':'return=minimal'}
           });
         }catch(e){erros++;console.error('update err',e.message);}
       }
@@ -946,7 +1020,7 @@ function getRegCols(){
   const allKeysSet=new Set();
   REGISTROS.forEach(r=>Object.keys(r).forEach(k=>{if(!SYSTEM.includes(k))allKeysSet.add(k);}));
   // cnpj e cnpj_formatado primeiro, depois o resto em ordem
-  const priority=['cnpj','cnpj_formatado'];
+  const priority=['cnpj','cnpj_formatado','fora_do_crm'];
   const rest=[...allKeysSet].filter(k=>!priority.includes(k)).sort();
   return [...priority.filter(k=>allKeysSet.has(k)||k==='cnpj'),...rest];
 }
@@ -975,8 +1049,9 @@ function renderUnificada(){
     document.getElementById('tbl-empty').style.display='none';
     document.getElementById('tbl-body').innerHTML=pageRows.map(r=>{
       const cells=cols.map(c=>{
-        const val=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??'');
-        return`<td class="${c==='cnpj'?'cnpj-col':''}">${val}</td>`;
+        if(c==='cnpj') return`<td class="cnpj-col">${formatCNPJ(r.cnpj)}</td>`;
+        if(c==='fora_do_crm') return`<td>${r.fora_do_crm==='SIM'?'<span class="fora-crm-tag">⚠️ FORA DO CRM</span>':''}</td>`;
+        return`<td>${r[c]??''}</td>`;
       });
       const fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return`<span class="fonte-tag">${b?b.nome:fid.substring(0,6)}</span>`;}).join('');
       return`<tr>${cells.join('')}<td>${fontes}</td></tr>`;
