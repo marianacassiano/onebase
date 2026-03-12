@@ -458,19 +458,23 @@ async function fetchAll(path){
   let all=[],offset=0,done=false;
   while(!done){
     const sep=path.includes('?')?'&':'?';
-    const chunk=await sbFetch(`${path}${sep}limit=${LIMIT}&offset=${offset}`,{
+    const url=`${path}${sep}limit=${LIMIT}&offset=${offset}`;
+    const r=await fetch(`${SB_URL}/rest/v1/${url}`,{
       headers:{
-        'Range-Unit':'items',
-        'Range':`${offset}-${offset+LIMIT-1}`
+        'apikey':SB_KEY,
+        'Authorization':`Bearer ${SB_KEY}`,
+        'Content-Type':'application/json',
+        'Prefer':'count=none'
       }
     });
-    // chunk pode ser array ou objeto com erro
-    const rows=Array.isArray(chunk)?chunk:[];
+    const text=await r.text();
+    const rows=text?JSON.parse(text):[];
+    if(!Array.isArray(rows)){console.error('fetchAll erro:',rows);break;}
     all=all.concat(rows);
     if(rows.length<LIMIT)done=true;
     else offset+=LIMIT;
   }
-  console.log(`fetchAll(${path}): ${all.length} registros`);
+  console.log(`fetchAll: ${all.length} registros`);
   return all;
 }
 
