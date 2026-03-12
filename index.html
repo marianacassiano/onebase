@@ -128,6 +128,13 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 .btn-aplicar{padding:9px 20px;background:var(--blue);color:white;border:none;border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
 .btn-limpar{padding:9px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;color:var(--gray-600);cursor:pointer;}
 .btn-limpar:hover{border-color:var(--red);color:var(--red);}
+.filtro-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.filtro-row select,.filtro-row input{padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;color:var(--gray-800);background:white;outline:none;}
+.filtro-row select:focus,.filtro-row input:focus{border-color:var(--blue-light);}
+.filtro-row select{min-width:200px;}
+.filtro-row input{flex:1;}
+.filtro-row .btn-remove-filtro{background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:18px;line-height:1;padding:4px 6px;border-radius:6px;}
+.filtro-row .btn-remove-filtro:hover{color:var(--red);background:#FFF5F5;}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(30,35,51,.5);backdrop-filter:blur(4px);z-index:200;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px;}
 .modal-overlay.open{display:flex;animation:fadeIn .2s ease;}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -266,12 +273,15 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
       <button class="btn-action" onclick="exportUnificada()">📥 Exportar XLSX</button>
     </div>
     <div class="filtros-panel">
-      <div class="filtros-title">Filtrar / Segmentar</div>
-      <div class="filtros-cols" id="filtros-cols"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div class="filtros-title" style="margin-bottom:0;">Filtrar / Segmentar</div>
+        <button class="btn-action" onclick="addFiltroRow()" style="font-size:12px;padding:6px 14px;">+ Adicionar Filtro</button>
+      </div>
+      <div id="filtros-rows"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn-aplicar" onclick="applyFiltros()">Aplicar Filtros</button>
-        <button class="btn-limpar" onclick="clearFiltros()">Limpar</button>
-        <button class="btn-action" style="margin-left:0;" onclick="openSaveListaModal()">💾 Salvar como Lista</button>
+        <button class="btn-limpar" onclick="clearFiltros()">Limpar Tudo</button>
+        <button class="btn-action" style="margin-left:auto;" onclick="openSaveListaModal()">💾 Salvar como Lista</button>
       </div>
     </div>
     <div class="table-wrap">
@@ -478,7 +488,12 @@ async function loadAll(){
       sbFetch('listas?select=*&order=created_at.desc')
     ]);
     REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
-    
+    // Garante que r.dados seja sempre objeto (Supabase às vezes retorna JSONB como string)
+    REGISTROS=REGISTROS.map(r=>{
+      if(typeof r.dados==='string'){try{r.dados=JSON.parse(r.dados);}catch(e){r.dados={};}}
+      if(!r.dados||typeof r.dados!=='object')r.dados={};
+      return r;
+    });
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
@@ -858,27 +873,65 @@ async function confirmarImport(){
 
 // ── BASE UNIFICADA ─────────────────────────────────────────────────
 function renderFiltros(){
-  const cols=getRegCols();
-  document.getElementById('filtros-cols').innerHTML=cols.map(k=>`
-    <div class="filtro-item">
-      <label>${k}</label>
-      <input type="text" placeholder="Filtrar..." data-col="${k}" class="filtro-input">
-    </div>`).join('');
+  // Só inicializa com uma linha em branco se ainda não houver filtros
+  if(!document.querySelector('.filtro-row')){
+    document.getElementById('filtros-rows').innerHTML='';
+    addFiltroRow();
+  }
 }
 
+function addFiltroRow(){
+  const cols=getRegCols();
+  const id='fr_'+Date.now();
+  const opts=cols.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const row=document.createElement('div');
+  row.className='filtro-row';
+  row.id=id;
+  row.innerHTML=`
+    <select onchange="updateFiltroRowOp('${id}')">
+      <option value="">— Selecione a coluna —</option>
+      ${opts}
+    </select>
+    <select class="filtro-op" style="min-width:140px;">
+      <option value="contem">contém</option>
+      <option value="igual">igual a</option>
+      <option value="comeca">começa com</option>
+      <option value="nao_contem">não contém</option>
+    </select>
+    <input type="text" class="filtro-val" placeholder="Valor...">
+    <button class="btn-remove-filtro" onclick="removeFiltroRow('${id}')" title="Remover">×</button>`;
+  document.getElementById('filtros-rows').appendChild(row);
+}
+
+function removeFiltroRow(id){
+  const el=document.getElementById(id);
+  if(el)el.remove();
+}
+
+function updateFiltroRowOp(id){/* placeholder para expansões futuras */}
+
 function applyFiltros(){
-  const inputs=document.querySelectorAll('.filtro-input');
   const search=document.getElementById('search-unificada').value.trim().toLowerCase();
+  // Coleta as regras de filtro ativas
+  const regras=[];
+  document.querySelectorAll('.filtro-row').forEach(row=>{
+    const col=row.querySelector('select').value;
+    const op=row.querySelector('.filtro-op').value;
+    const val=row.querySelector('.filtro-val').value.trim().toLowerCase();
+    if(col&&val)regras.push({col,op,val});
+  });
+
   filteredRegs=REGISTROS.filter(r=>{
     if(search){
       const rowStr=JSON.stringify(r).toLowerCase();
       if(!rowStr.includes(search))return false;
     }
-    for(const inp of inputs){
-      const val=inp.value.trim().toLowerCase();
-      if(!val)continue;
-      const cell=String((r.dados||{})[inp.dataset.col]||'').toLowerCase();
-      if(!cell.includes(val))return false;
+    for(const {col,op,val} of regras){
+      const cell=String(col==='cnpj'?(r.cnpj||''):((r.dados||{})[col]??'')).toLowerCase();
+      if(op==='contem'&&!cell.includes(val))return false;
+      if(op==='igual'&&cell!==val)return false;
+      if(op==='comeca'&&!cell.startsWith(val))return false;
+      if(op==='nao_contem'&&cell.includes(val))return false;
     }
     return true;
   });
@@ -886,8 +939,9 @@ function applyFiltros(){
 }
 
 function clearFiltros(){
-  document.querySelectorAll('.filtro-input').forEach(i=>i.value='');
+  document.getElementById('filtros-rows').innerHTML='';
   document.getElementById('search-unificada').value='';
+  addFiltroRow();
   filteredRegs=[...REGISTROS];currentPage=1;renderUnificada();
 }
 
