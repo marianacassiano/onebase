@@ -877,7 +877,7 @@ function applyFiltros(){
     for(const inp of inputs){
       const val=inp.value.trim().toLowerCase();
       if(!val)continue;
-      const cell=String(r[inp.dataset.col]||'').toLowerCase();
+      const cell=String((r.dados||{})[inp.dataset.col]||'').toLowerCase();
       if(!cell.includes(val))return false;
     }
     return true;
@@ -892,17 +892,20 @@ function clearFiltros(){
 }
 
 function getRegCols(){
-  const fixed=new Set(['id','cnpj','cnpj_formatado','fontes','created_at','updated_at']);
   if(!REGISTROS.length)return[];
-  const allKeys=Object.keys(REGISTROS[0]).filter(k=>!fixed.has(k));
+  // Colunas fixas sempre presentes
+  const fixed=['cnpj'];
+  // Coleta todas as chaves do objeto "dados" de todos os registros
+  const allKeysSet=new Set();
+  REGISTROS.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeysSet.add(k)));
+  const allKeys=[...allKeysSet];
   // Remove colunas duplicadas: se existe versão com Case Original, ignora a versão lowercase
-  const lowerKeys=new Set(allKeys.map(k=>k.toLowerCase()));
-  return allKeys.filter(k=>{
-    // Se esta chave é lowercase e existe uma versão com maiúsculas, pula
+  const filtered=allKeys.filter(k=>{
     const hasUpperVersion=allKeys.some(k2=>k2!==k && k2.toLowerCase()===k.toLowerCase());
     if(hasUpperVersion && k===k.toLowerCase()) return false;
     return true;
   });
+  return [...fixed,...filtered];
 }
 
 function renderUnificada(){
@@ -928,7 +931,10 @@ function renderUnificada(){
   }else{
     document.getElementById('tbl-empty').style.display='none';
     document.getElementById('tbl-body').innerHTML=pageRows.map(r=>{
-      const cells=cols.map(c=>`<td class="${c==='cnpj'?'cnpj-col':''}">${r[c]??''}</td>`);
+      const cells=cols.map(c=>{
+        const val=c==='cnpj'?formatCNPJ(r.cnpj):((r.dados||{})[c]??'');
+        return`<td class="${c==='cnpj'?'cnpj-col':''}">${val}</td>`;
+      });
       const fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return`<span class="fonte-tag">${b?b.nome:fid.substring(0,6)}</span>`;}).join('');
       return`<tr>${cells.join('')}<td>${fontes}</td></tr>`;
     }).join('');
@@ -952,8 +958,8 @@ function exportUnificada(){
   if(!filteredRegs.length){showToast('Nenhum dado para exportar','error');return;}
   const cols=getRegCols();
   const rows=filteredRegs.map(r=>{
-    const obj={};
-    cols.forEach(c=>obj[c]=r[c]??'');
+    const obj={cnpj:formatCNPJ(r.cnpj)};
+    cols.filter(c=>c!=='cnpj').forEach(c=>obj[c]=(r.dados||{})[c]??'');
     obj.fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return b?b.nome:fid;}).join(', ');
     return obj;
   });
