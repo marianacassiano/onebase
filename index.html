@@ -558,6 +558,11 @@ async function loadAll(){
       REGISTROS.push({...r, fora_do_crm:'SIM'});
     });
 
+    REGISTROS.sort((a,b)=>{
+      const na=String(a.nome_empresa||a.empresa||a.cnpj||'').toLowerCase();
+      const nb=String(b.nome_empresa||b.empresa||b.cnpj||'').toLowerCase();
+      return na.localeCompare(nb,'pt-BR');
+    });
     filteredRegs=[...REGISTROS];
     renderDashboard();renderBases();renderUnificada();renderCRM();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
@@ -571,7 +576,11 @@ function showView(v){
   document.getElementById(`view-${v}`).classList.add('active');
   document.getElementById(`nav-${v}`).classList.add('active');
   if(v==='unificada'){
-    filteredRegs=[...REGISTROS];
+    filteredRegs=[...REGISTROS].sort((a,b)=>{
+      const na=String(a.nome_empresa||a.empresa||a.cnpj||'').toLowerCase();
+      const nb=String(b.nome_empresa||b.empresa||b.cnpj||'').toLowerCase();
+      return na.localeCompare(nb,'pt-BR');
+    });
     currentPage=1;
     renderUnificada();
     renderFiltros();
@@ -989,24 +998,54 @@ function renderFiltros(){
 function addFiltroRow(){
   const cols=getRegCols();
   const id='fr_'+Date.now();
-  const opts=cols.map(c=>`<option value="${c}">${c}</option>`).join('');
   const row=document.createElement('div');
   row.className='filtro-row';
   row.id=id;
   row.innerHTML=`
-    <select onchange="updateFiltroRowOp('${id}')">
-      <option value="">— Selecione a coluna —</option>
-      ${opts}
-    </select>
-    <select class="filtro-op" style="min-width:140px;">
+    <div class="filtro-col-wrap" style="position:relative;min-width:220px;">
+      <input type="text" class="filtro-col-search" placeholder="🔍 Buscar coluna..." autocomplete="off"
+        oninput="filterColOptions('${id}',this.value)"
+        onfocus="showColDropdown('${id}')"
+        onblur="setTimeout(()=>hideColDropdown('${id}'),200)"
+        style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;outline:none;">
+      <input type="hidden" class="filtro-col-val" value="">
+      <div class="filtro-col-dropdown" id="fcd_${id}"
+        style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--blue-light);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;z-index:500;">
+        ${cols.map(c=>`<div class="filtro-col-opt" data-val="${c}" onmousedown="selectColOption('${id}','${c}')"
+          style="padding:8px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--gray-100);"
+          onmouseover="this.style.background='var(--blue-pale)'" onmouseout="this.style.background=''">${c}</div>`).join('')}
+      </div>
+    </div>
+    <select class="filtro-op" style="min-width:140px;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;outline:none;">
       <option value="contem">contém</option>
       <option value="igual">igual a</option>
       <option value="comeca">começa com</option>
       <option value="nao_contem">não contém</option>
     </select>
-    <input type="text" class="filtro-val" placeholder="Valor...">
+    <input type="text" class="filtro-val" placeholder="Valor..." style="flex:1;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;outline:none;">
     <button class="btn-remove-filtro" onclick="removeFiltroRow('${id}')" title="Remover">×</button>`;
   document.getElementById('filtros-rows').appendChild(row);
+}
+
+function showColDropdown(id){
+  document.getElementById('fcd_'+id).style.display='block';
+}
+function hideColDropdown(id){
+  document.getElementById('fcd_'+id).style.display='none';
+}
+function filterColOptions(id,q){
+  const dd=document.getElementById('fcd_'+id);
+  dd.style.display='block';
+  const lq=q.toLowerCase();
+  dd.querySelectorAll('.filtro-col-opt').forEach(el=>{
+    el.style.display=el.dataset.val.toLowerCase().includes(lq)?'':'none';
+  });
+}
+function selectColOption(id,val){
+  const row=document.getElementById(id);
+  row.querySelector('.filtro-col-search').value=val;
+  row.querySelector('.filtro-col-val').value=val;
+  hideColDropdown(id);
 }
 
 function removeFiltroRow(id){
@@ -1014,14 +1053,14 @@ function removeFiltroRow(id){
   if(el)el.remove();
 }
 
-function updateFiltroRowOp(id){/* placeholder para expansões futuras */}
+function updateFiltroRowOp(id){/* placeholder */}
 
 function applyFiltros(){
   const search=document.getElementById('search-unificada').value.trim().toLowerCase();
   // Coleta as regras de filtro ativas
   const regras=[];
   document.querySelectorAll('.filtro-row').forEach(row=>{
-    const col=row.querySelector('select').value;
+    const col=row.querySelector('.filtro-col-val').value;
     const op=row.querySelector('.filtro-op').value;
     const val=row.querySelector('.filtro-val').value.trim().toLowerCase();
     if(col&&val)regras.push({col,op,val});
@@ -1048,7 +1087,12 @@ function clearFiltros(){
   document.getElementById('filtros-rows').innerHTML='';
   document.getElementById('search-unificada').value='';
   addFiltroRow();
-  filteredRegs=[...REGISTROS];currentPage=1;renderUnificada();
+  filteredRegs=[...REGISTROS].sort((a,b)=>{
+    const na=String(a.nome_empresa||a.empresa||a.cnpj||'').toLowerCase();
+    const nb=String(b.nome_empresa||b.empresa||b.cnpj||'').toLowerCase();
+    return na.localeCompare(nb,'pt-BR');
+  });
+  currentPage=1;renderUnificada();
 }
 
 function getRegCols(){
