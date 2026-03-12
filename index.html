@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -109,6 +110,8 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 .table-empty{padding:48px;text-align:center;color:var(--gray-400);font-size:13px;}
 .fonte-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-right:2px;background:var(--blue-pale);color:var(--blue);}
 .fora-crm-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#FFF3E0;color:#E65100;border:1px solid #FFB74D;}
+.empresa-crm-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#E8F5E9;color:#2E7D32;border:1px solid #81C784;}
+.sem-cnpj-tag{display:inline-block;font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:#FCE4EC;color:#C62828;border:1px solid #F48FB1;}
 .listas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
 .lista-card{background:white;border-radius:14px;padding:20px;box-shadow:0 1px 6px rgba(0,0,0,.06);}
 .lista-card-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
@@ -232,6 +235,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
         </div>
       </div>
       <button class="btn-nova" onclick="openUploadModal()">+ Importar Base</button>
+      <button class="btn-nova" onclick="sincronizarTudo()" style="background:var(--teal);box-shadow:0 3px 12px rgba(0,178,200,.3);" id="btn-sync">🔄 Sincronizar</button>
     </div>
   </div>
 
@@ -507,12 +511,23 @@ async function loadAll(){
     ]);
     // Carrega registros da tabela oficial rdcrm_empresas como base primária
     // e mescla com registros extras da tabela registros
-    const [rdcrmRows, regRows] = await Promise.all([
-      fetchAll('rdcrm_empresas?select=*&order=cnpj.asc'),
-      fetchAll('registros?select=*&order=created_at.asc')
-    ]);
+    let rdcrmRows=[], regRows=[];
+    try{
+      [rdcrmRows, regRows] = await Promise.all([
+        fetchAll('rdcrm_empresas?select=*&order=id.asc'),
+        fetchAll('registros?select=*&order=created_at.asc')
+      ]);
+    }catch(e){
+      console.error('Erro ao carregar tabelas principais:',e);
+      // Tenta carregar separadamente para isolar o erro
+      try{ rdcrmRows=await fetchAll('rdcrm_empresas?select=*&order=id.asc'); }
+      catch(e2){ console.error('rdcrm_empresas falhou:',e2.message); showToast('Erro ao carregar rdcrm_empresas: '+e2.message,'error'); }
+      try{ regRows=await fetchAll('registros?select=*&order=created_at.asc'); }
+      catch(e2){ console.error('registros falhou:',e2.message); }
+    }
     RDCRM=rdcrmRows; // mantém cópia pura para a aba Empresas CRM
     filteredCRM=[...RDCRM];
+    console.log('rdcrm_empresas carregadas:',RDCRM.length,'registros carregados:',regRows.length);
 
     // Monta mapa dos extras pelo CNPJ normalizado
     const extrasMap={};
@@ -1118,9 +1133,9 @@ function getCrmCols(){
   if(!RDCRM.length)return[];
   const allKeysSet=new Set();
   RDCRM.forEach(r=>Object.keys(r).forEach(k=>{if(!SYSTEM.includes(k))allKeysSet.add(k);}));
-  const priority=['cnpj','cnpj_formatado'];
+  const priority=['status_crm','cnpj','cnpj_formatado'];
   const rest=[...allKeysSet].filter(k=>!priority.includes(k)).sort();
-  return [...priority.filter(k=>allKeysSet.has(k)||k==='cnpj'),...rest];
+  return [...priority.filter(k=>k==='status_crm'||allKeysSet.has(k)||k==='cnpj'),...rest];
 }
 
 function renderCRM(){
@@ -1130,11 +1145,15 @@ function renderCRM(){
   const pag=document.getElementById('crm-pagination');
   if(!RDCRM.length){
     head.innerHTML='';body.innerHTML='';
-    empty.style.display='block';empty.textContent='Nenhum registro no CRM.';
+    empty.style.display='block';
+    empty.innerHTML='<div style="font-size:14px;color:var(--gray-400);">Nenhum dado carregado da tabela <b>rdcrm_empresas</b>.<br><span style="font-size:12px;">Verifique se a tabela tem <b>RLS desativado</b> ou uma policy de leitura para a anon key no Supabase.<br>Abra o console (F12) para ver o erro detalhado.</span></div>';
     pag.innerHTML='';return;
   }
   const cols=getCrmCols();
-  head.innerHTML='<tr>'+cols.map(c=>`<th class="${c==='cnpj'?'cnpj-col':''}">${c}</th>`).join('')+'</tr>';
+  head.innerHTML='<tr>'+cols.map(c=>{
+    const label=c==='status_crm'?'Status':c;
+    return`<th class="${c==='cnpj'?'cnpj-col':''}">${label}</th>`;
+  }).join('')+'</tr>';
 
   const total=filteredCRM.length;
   const totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
@@ -1146,9 +1165,14 @@ function renderCRM(){
   }else{
     empty.style.display='none';
     body.innerHTML=pageRows.map(r=>{
+      const semCnpj=!r.cnpj||String(r.cnpj).replace(/\D/g,'').length===0;
       const cells=cols.map(c=>{
-        const val=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??'');
-        return`<td class="${c==='cnpj'?'cnpj-col':''}">${val}</td>`;
+        if(c==='status_crm'){
+          const tags=`<span class="empresa-crm-tag">✅ EMPRESA CRM</span>${semCnpj?' <span class="sem-cnpj-tag">⚠️ SEM CNPJ</span>':''}`;
+          return`<td style="white-space:nowrap;">${tags}</td>`;
+        }
+        if(c==='cnpj') return`<td class="cnpj-col">${semCnpj?'<span class="sem-cnpj-tag">SEM CNPJ</span>':formatCNPJ(r.cnpj)}</td>`;
+        return`<td>${r[c]??''}</td>`;
       });
       return`<tr>${cells.join('')}</tr>`;
     }).join('');
@@ -1190,6 +1214,94 @@ function exportCRM(){
   XLSX.utils.book_append_sheet(wb,ws,'Empresas CRM');
   XLSX.writeFile(wb,`empresas_crm_${new Date().toISOString().slice(0,10)}.xlsx`);
   showToast('Exportado!');
+}
+
+// ── SINCRONIZAR ────────────────────────────────────────────────────
+async function sincronizarTudo(){
+  if(!confirm('Isso vai sincronizar todos os dados do rdcrm_empresas para a base unificada e atualizar as tags FORA DO CRM. Continuar?'))return;
+  const btn=document.getElementById('btn-sync');
+  btn.textContent='⏳ Sincronizando...';btn.disabled=true;
+  showLoading();
+
+  try{
+    // 1. Recarrega rdcrm_empresas atualizado
+    const rdcrmRows=await fetchAll('rdcrm_empresas?select=*&order=id.asc');
+    const rdcrmMap={};
+    rdcrmRows.forEach(r=>{
+      const key=String(r.cnpj||'').replace(/\D/g,'');
+      if(key) rdcrmMap[key]=r;
+    });
+    const rdcrmSet=new Set(Object.keys(rdcrmMap));
+    showToast(`${rdcrmRows.length.toLocaleString('pt-BR')} empresas no CRM carregadas...`);
+
+    // 2. Recarrega todos os registros existentes
+    const regRows=await fetchAll('registros?select=*&order=id.asc');
+    const regMap={};
+    regRows.forEach(r=>{
+      const key=String(r.cnpj||'').replace(/\D/g,'');
+      if(key) regMap[key]=r;
+    });
+
+    let atualizados=0, inseridos=0, erros=0;
+    const CHUNK=50;
+
+    // 3. Para cada empresa do rdcrm: atualiza ou insere em registros
+    const rdcrmList=Object.entries(rdcrmMap);
+    for(let i=0;i<rdcrmList.length;i+=CHUNK){
+      const slice=rdcrmList.slice(i,i+CHUNK);
+      for(const [key,rdcrm] of slice){
+        try{
+          if(regMap[key]){
+            // Já existe em registros → mescla campos do rdcrm (rdcrm prevalece)
+            const ex=regMap[key];
+            const patch={fora_do_crm:null,updated_at:new Date().toISOString()};
+            Object.entries(rdcrm).forEach(([k,v])=>{
+              if(!['id','created_at','updated_at','fontes'].includes(k)&&v!=null&&v!=='')
+                patch[k]=v;
+            });
+            await sbFetch(`registros?id=eq.${ex.id}`,{
+              method:'PATCH',body:JSON.stringify(patch),headers:{'Prefer':'return=minimal'}
+            });
+            atualizados++;
+          }else{
+            // Não existe → insere como novo registro vindo do CRM
+            const novo={...rdcrm,fora_do_crm:null,fontes:[]};
+            delete novo.id;
+            await sbFetch('registros',{
+              method:'POST',body:JSON.stringify([novo]),headers:{'Prefer':'return=minimal'}
+            });
+            inseridos++;
+          }
+        }catch(e){erros++;console.error('sync err',key,e.message);}
+      }
+      // Atualiza label de progresso
+      const prog=Math.min(i+CHUNK,rdcrmList.length);
+      btn.textContent=`⏳ ${prog}/${rdcrmList.length}`;
+    }
+
+    // 4. Registros que NÃO estão no rdcrm → marca FORA DO CRM
+    let foraCount=0;
+    for(const [key,reg] of Object.entries(regMap)){
+      if(!rdcrmSet.has(key)&&reg.fora_do_crm!=='SIM'){
+        try{
+          await sbFetch(`registros?id=eq.${reg.id}`,{
+            method:'PATCH',body:JSON.stringify({fora_do_crm:'SIM'}),headers:{'Prefer':'return=minimal'}
+          });
+          foraCount++;
+        }catch(e){console.error('fora_do_crm err',key,e.message);}
+      }
+    }
+
+    showToast(`✅ Sync concluído! ${inseridos} inseridos, ${atualizados} atualizados, ${foraCount} marcados FORA DO CRM${erros?`, ${erros} erros`:''}`, erros?'error':'success');
+    await loadAll();
+
+  }catch(e){
+    showToast('Erro na sincronização: '+e.message,'error');
+    console.error(e);
+  }
+
+  btn.textContent='🔄 Sincronizar';btn.disabled=false;
+  hideLoading();
 }
 
 // ── LISTAS ─────────────────────────────────────────────────────────
