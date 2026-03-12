@@ -487,6 +487,10 @@ async function loadAll(){
     ]);
     REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
     filteredRegs=[...REGISTROS];
+    // Diagnóstico visível
+    document.getElementById('tbl-empty').style.display='block';
+    document.getElementById('tbl-empty').textContent=
+      `Bases: ${BASES.length} | Registros: ${REGISTROS.length} | filteredRegs: ${filteredRegs.length}`;
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
   hideLoading();
