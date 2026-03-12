@@ -859,7 +859,7 @@ async function confirmarImport(){
 // ── BASE UNIFICADA ─────────────────────────────────────────────────
 function renderFiltros(){
   const cols=getRegCols();
-  document.getElementById('filtros-cols').innerHTML=cols.slice(0,10).map(k=>`
+  document.getElementById('filtros-cols').innerHTML=cols.map(k=>`
     <div class="filtro-item">
       <label>${k}</label>
       <input type="text" placeholder="Filtrar..." data-col="${k}" class="filtro-input">
@@ -893,19 +893,18 @@ function clearFiltros(){
 
 function getRegCols(){
   if(!REGISTROS.length)return[];
-  // Colunas fixas sempre presentes
-  const fixed=['cnpj'];
-  // Coleta todas as chaves do objeto "dados" de todos os registros
+  // Percorre TODOS os registros para garantir que nenhuma coluna seja omitida
   const allKeysSet=new Set();
   REGISTROS.forEach(r=>Object.keys(r.dados||{}).forEach(k=>allKeysSet.add(k)));
   const allKeys=[...allKeysSet];
-  // Remove colunas duplicadas: se existe versão com Case Original, ignora a versão lowercase
+  // Remove duplicatas de capitalização: mantém a versão com letras maiúsculas
   const filtered=allKeys.filter(k=>{
     const hasUpperVersion=allKeys.some(k2=>k2!==k && k2.toLowerCase()===k.toLowerCase());
     if(hasUpperVersion && k===k.toLowerCase()) return false;
     return true;
   });
-  return [...fixed,...filtered];
+  // cnpj sempre primeiro
+  return ['cnpj',...filtered];
 }
 
 function renderUnificada(){
