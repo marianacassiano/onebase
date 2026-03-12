@@ -472,16 +472,48 @@ async function doLogin(){
     currentUser=users[0];
     const acessos=[new Date().toLocaleString('pt-BR'),...(currentUser.acessos||[])].slice(0,10);
     await sbFetch(`usuarios?id=eq.${currentUser.id}`,{method:'PATCH',body:JSON.stringify({acessos}),headers:{'Prefer':''}});
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app').style.display='block';
-    document.getElementById('user-avatar-btn').textContent=currentUser.nome.charAt(0);
-    document.getElementById('role-badge').textContent=currentUser.role==='admin'?'Admin':'Usuário';
+    localStorage.setItem('onebase_session', JSON.stringify(currentUser));
+    iniciarApp();
     await loadAll();
   }catch(e){showErr('Erro: '+e.message);}
   hideLoading();
 }
 function showErr(m){const el=document.getElementById('login-error');el.textContent=m;el.style.display='block';}
-function doLogout(){currentUser=null;BASES=[];REGISTROS=[];LISTAS=[];filteredRegs=[];document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('inp-email').value='';document.getElementById('inp-senha').value='';document.getElementById('login-error').style.display='none';}
+function doLogout(){
+  currentUser=null;BASES=[];REGISTROS=[];RDCRM=[];LISTAS=[];filteredRegs=[];filteredCRM=[];
+  localStorage.removeItem('onebase_session');
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('inp-email').value='';
+  document.getElementById('inp-senha').value='';
+  document.getElementById('login-error').style.display='none';
+}
+
+function iniciarApp(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('user-avatar-btn').textContent=currentUser.nome.charAt(0);
+  document.getElementById('role-badge').textContent=currentUser.role==='admin'?'Admin':'Usuário';
+}
+// ── RESTAURAR SESSÃO ───────────────────────────────────────────────
+(async function restoreSession(){
+  const saved=localStorage.getItem('onebase_session');
+  if(!saved)return;
+  try{
+    const user=JSON.parse(saved);
+    // Revalida se o usuário ainda existe no banco
+    const users=await sbFetch(`usuarios?id=eq.${user.id}&select=*`);
+    if(!users.length){localStorage.removeItem('onebase_session');return;}
+    currentUser=users[0];
+    localStorage.setItem('onebase_session', JSON.stringify(currentUser));
+    iniciarApp();
+    await loadAll();
+  }catch(e){
+    localStorage.removeItem('onebase_session');
+    console.warn('Sessão inválida, redirecionando para login.',e);
+  }
+})();
+
 function toggleUserMenu(){document.getElementById('user-dropdown').classList.toggle('open');}
 document.addEventListener('click',e=>{if(!e.target.closest('.user-menu'))document.getElementById('user-dropdown').classList.remove('open');});
 
@@ -1022,7 +1054,16 @@ function addFiltroRow(){
       <option value="comeca">começa com</option>
       <option value="nao_contem">não contém</option>
     </select>
-    <input type="text" class="filtro-val" placeholder="Valor..." style="flex:1;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;outline:none;">
+    <div class="filtro-val-wrap" style="position:relative;flex:1;">
+      <input type="text" class="filtro-val" placeholder="Valor..." autocomplete="off"
+        style="width:100%;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;outline:none;"
+        oninput="filterValOptions(this)"
+        onfocus="showValDropdown(this)"
+        onblur="setTimeout(()=>hideValDropdown(this),200)">
+      <div class="filtro-val-dropdown"
+        style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--blue-light);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;z-index:500;margin-top:2px;">
+      </div>
+    </div>
     <button class="btn-remove-filtro" onclick="removeFiltroRow('${id}')" title="Remover">×</button>`;
   document.getElementById('filtros-rows').appendChild(row);
 }
@@ -1041,11 +1082,65 @@ function filterColOptions(id,q){
     el.style.display=el.dataset.val.toLowerCase().includes(lq)?'':'none';
   });
 }
-function selectColOption(id,val){
+function selectColOption(id,colName){
   const row=document.getElementById(id);
-  row.querySelector('.filtro-col-search').value=val;
-  row.querySelector('.filtro-col-val').value=val;
+  row.querySelector('.filtro-col-search').value=colName;
+  row.querySelector('.filtro-col-val').value=colName;
   hideColDropdown(id);
+  // Pré-carrega as opções únicas da coluna escolhida no dropdown de valor
+  const valInput=row.querySelector('.filtro-val');
+  const valDD=row.querySelector('.filtro-val-dropdown');
+  valInput.value='';
+  populateValDropdown(valDD, colName, '');
+}
+
+function getUniqueVals(colName){
+  const vals=new Set();
+  REGISTROS.forEach(r=>{
+    const v=String(r[colName]??'').trim();
+    if(v) vals.add(v);
+  });
+  return [...vals].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+
+function populateValDropdown(dd, colName, q){
+  const all=getUniqueVals(colName);
+  const lq=q.toLowerCase();
+  const filtered=lq?all.filter(v=>v.toLowerCase().includes(lq)):all;
+  if(!filtered.length){dd.style.display='none';return;}
+  dd.innerHTML=filtered.slice(0,100).map(v=>
+    `<div onmousedown="selectValOption(this,'${v.replace(/'/g,"\'")}','${v.replace(/'/g,"\'")}') "
+      style="padding:8px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--gray-100);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+      onmouseover="this.style.background='var(--blue-pale)'" onmouseout="this.style.background=''">${v}</div>`
+  ).join('');
+  dd.style.display='block';
+}
+
+function selectValOption(el, val){
+  const wrap=el.closest('.filtro-val-wrap');
+  wrap.querySelector('.filtro-val').value=val;
+  wrap.querySelector('.filtro-val-dropdown').style.display='none';
+}
+
+function showValDropdown(inp){
+  const row=inp.closest('.filtro-row');
+  const colName=row.querySelector('.filtro-col-val').value;
+  if(!colName)return;
+  const dd=inp.closest('.filtro-val-wrap').querySelector('.filtro-val-dropdown');
+  populateValDropdown(dd, colName, inp.value);
+}
+
+function hideValDropdown(inp){
+  const dd=inp.closest('.filtro-val-wrap').querySelector('.filtro-val-dropdown');
+  if(dd) dd.style.display='none';
+}
+
+function filterValOptions(inp){
+  const row=inp.closest('.filtro-row');
+  const colName=row.querySelector('.filtro-col-val').value;
+  if(!colName)return;
+  const dd=inp.closest('.filtro-val-wrap').querySelector('.filtro-val-dropdown');
+  populateValDropdown(dd, colName, inp.value);
 }
 
 function removeFiltroRow(id){
