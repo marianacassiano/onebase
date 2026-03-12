@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1059,9 +1058,9 @@ function getRegCols(){
   const allKeysSet=new Set();
   REGISTROS.forEach(r=>Object.keys(r).forEach(k=>{if(!SYSTEM.includes(k))allKeysSet.add(k);}));
   // cnpj e cnpj_formatado primeiro, depois o resto em ordem
-  const priority=['cnpj','cnpj_formatado','fora_do_crm'];
+  const priority=['status_registro','cnpj','cnpj_formatado','fora_do_crm'];
   const rest=[...allKeysSet].filter(k=>!priority.includes(k)).sort();
-  return [...priority.filter(k=>allKeysSet.has(k)||k==='cnpj'),...rest];
+  return [...priority.filter(k=>k==='status_registro'||allKeysSet.has(k)||k==='cnpj'),...rest];
 }
 
 function renderUnificada(){
@@ -1074,7 +1073,7 @@ function renderUnificada(){
     return;
   }
   const cols=getRegCols();
-  document.getElementById('tbl-head').innerHTML='<tr>'+cols.map(c=>`<th class="${c==='cnpj'?'cnpj-col':''}">${c}</th>`).join('')+'<th>Fontes</th></tr>';
+  document.getElementById('tbl-head').innerHTML='<tr>'+cols.map(c=>{const label=c==='status_registro'?'Status':c;return`<th class="${c==='cnpj'?'cnpj-col':''}">${label}</th>`;}).join('')+'<th>Fontes</th></tr>';
 
   const total=filteredRegs.length,totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
   if(currentPage>totalPages)currentPage=totalPages;
@@ -1088,8 +1087,13 @@ function renderUnificada(){
     document.getElementById('tbl-empty').style.display='none';
     document.getElementById('tbl-body').innerHTML=pageRows.map(r=>{
       const cells=cols.map(c=>{
+        if(c==='status_registro'){
+          const isCRM=r.fora_do_crm!=='SIM';
+          if(isCRM) return`<td style="white-space:nowrap;"><span class="empresa-crm-tag">✅ EMPRESA CRM</span></td>`;
+          return`<td style="white-space:nowrap;"><span class="fora-crm-tag">⚠️ FORA DO CRM</span></td>`;
+        }
         if(c==='cnpj') return`<td class="cnpj-col">${formatCNPJ(r.cnpj)}</td>`;
-        if(c==='fora_do_crm') return`<td>${r.fora_do_crm==='SIM'?'<span class="fora-crm-tag">⚠️ FORA DO CRM</span>':''}</td>`;
+        if(c==='fora_do_crm') return`<td></td>`; // oculta coluna redundante
         return`<td>${r[c]??''}</td>`;
       });
       const fontes=(r.fontes||[]).map(fid=>{const b=BASES.find(x=>x.id===fid);return`<span class="fonte-tag">${b?b.nome:fid.substring(0,6)}</span>`;}).join('');
