@@ -481,16 +481,18 @@ async function fetchAll(path){
 async function loadAll(){
   showLoading();
   try{
-    [BASES,LISTAS]=await Promise.all([
-      sbFetch('bases?select=*&order=created_at.desc'),
-      sbFetch('listas?select=*&order=created_at.desc')
-    ]);
+    showToast('Carregando bases...');
+    BASES=await sbFetch('bases?select=*&order=created_at.desc');
+    showToast(`Bases: ${BASES.length}`);
+    
+    LISTAS=await sbFetch('listas?select=*&order=created_at.desc');
+    showToast(`Listas: ${LISTAS.length}`);
+
+    showToast('Carregando registros...');
     REGISTROS=await fetchAll('registros?select=*&order=created_at.asc');
+    showToast(`Registros: ${REGISTROS.length}`);
+    
     filteredRegs=[...REGISTROS];
-    // Diagnóstico visível
-    document.getElementById('tbl-empty').style.display='block';
-    document.getElementById('tbl-empty').textContent=
-      `Bases: ${BASES.length} | Registros: ${REGISTROS.length} | filteredRegs: ${filteredRegs.length}`;
     renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
   hideLoading();
