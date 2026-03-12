@@ -220,6 +220,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
       <button class="nav-btn active" id="nav-dashboard" onclick="showView('dashboard')">Dashboard</button>
       <button class="nav-btn" id="nav-bases" onclick="showView('bases')">Bases</button>
       <button class="nav-btn" id="nav-unificada" onclick="showView('unificada')">Base Unificada</button>
+      <button class="nav-btn" id="nav-empresascrm" onclick="showView('empresascrm')">Empresas CRM</button>
       <button class="nav-btn" id="nav-listas" onclick="showView('listas')">Listas</button>
     </nav>
     <div class="topbar-actions">
@@ -291,6 +292,22 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
         <div class="table-empty" id="tbl-empty" style="display:none;">Nenhum registro encontrado.</div>
       </div>
       <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- EMPRESAS CRM -->
+  <div class="view" id="view-empresascrm">
+    <div class="view-toprow">
+      <span class="view-title">Empresas CRM</span>
+      <input type="text" class="search-input" id="search-crm" placeholder="🔍 Buscar..." oninput="applyCrmSearch()">
+      <button class="btn-action" onclick="exportCRM()">📥 Exportar XLSX</button>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data-table"><thead id="crm-head"></thead><tbody id="crm-body"></tbody></table>
+        <div class="table-empty" id="crm-empty" style="display:none;">Nenhum registro encontrado.</div>
+      </div>
+      <div class="pagination" id="crm-pagination"></div>
     </div>
   </div>
 
@@ -425,8 +442,8 @@ const sbFetch = async (path, opts={}) => {
 };
 
 // ── STATE ──────────────────────────────────────────────────────────
-let currentUser=null, BASES=[], REGISTROS=[], LISTAS=[], filteredRegs=[];
-let currentPage=1, PAGE_SIZE=100;
+let currentUser=null, BASES=[], REGISTROS=[], RDCRM=[], LISTAS=[], filteredRegs=[], filteredCRM=[];
+let currentPage=1, crmPage=1, PAGE_SIZE=100;
 let fileData=null, fileHeaders=[];
 let chartRef=null, verListaId=null;
 
@@ -494,6 +511,8 @@ async function loadAll(){
       fetchAll('rdcrm_empresas?select=*&order=cnpj.asc'),
       fetchAll('registros?select=*&order=created_at.asc')
     ]);
+    RDCRM=rdcrmRows; // mantém cópia pura para a aba Empresas CRM
+    filteredCRM=[...RDCRM];
 
     // Monta mapa dos extras pelo CNPJ normalizado
     const extrasMap={};
@@ -526,7 +545,7 @@ async function loadAll(){
     });
 
     filteredRegs=[...REGISTROS];
-    renderDashboard();renderBases();renderUnificada();renderListas();renderFiltros();
+    renderDashboard();renderBases();renderUnificada();renderCRM();renderListas();renderFiltros();
   }catch(e){showToast('Erro ao carregar: '+e.message,'error');}
   hideLoading();
 }
@@ -542,6 +561,11 @@ function showView(v){
     currentPage=1;
     renderUnificada();
     renderFiltros();
+  }
+  if(v==='empresascrm'){
+    filteredCRM=[...RDCRM];
+    crmPage=1;
+    renderCRM();
   }
 }
 
@@ -1085,6 +1109,86 @@ function exportUnificada(){
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Base Unificada');
   XLSX.writeFile(wb,`onebase_unificada_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('Exportado!');
+}
+
+// ── EMPRESAS CRM ───────────────────────────────────────────────────
+function getCrmCols(){
+  const SYSTEM=['id','fontes','created_at','updated_at'];
+  if(!RDCRM.length)return[];
+  const allKeysSet=new Set();
+  RDCRM.forEach(r=>Object.keys(r).forEach(k=>{if(!SYSTEM.includes(k))allKeysSet.add(k);}));
+  const priority=['cnpj','cnpj_formatado'];
+  const rest=[...allKeysSet].filter(k=>!priority.includes(k)).sort();
+  return [...priority.filter(k=>allKeysSet.has(k)||k==='cnpj'),...rest];
+}
+
+function renderCRM(){
+  const head=document.getElementById('crm-head');
+  const body=document.getElementById('crm-body');
+  const empty=document.getElementById('crm-empty');
+  const pag=document.getElementById('crm-pagination');
+  if(!RDCRM.length){
+    head.innerHTML='';body.innerHTML='';
+    empty.style.display='block';empty.textContent='Nenhum registro no CRM.';
+    pag.innerHTML='';return;
+  }
+  const cols=getCrmCols();
+  head.innerHTML='<tr>'+cols.map(c=>`<th class="${c==='cnpj'?'cnpj-col':''}">${c}</th>`).join('')+'</tr>';
+
+  const total=filteredCRM.length;
+  const totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+  if(crmPage>totalPages)crmPage=totalPages;
+  const pageRows=filteredCRM.slice((crmPage-1)*PAGE_SIZE,crmPage*PAGE_SIZE);
+
+  if(!pageRows.length){
+    body.innerHTML='';empty.style.display='block';empty.textContent='Nenhum registro encontrado.';
+  }else{
+    empty.style.display='none';
+    body.innerHTML=pageRows.map(r=>{
+      const cells=cols.map(c=>{
+        const val=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??'');
+        return`<td class="${c==='cnpj'?'cnpj-col':''}">${val}</td>`;
+      });
+      return`<tr>${cells.join('')}</tr>`;
+    }).join('');
+  }
+
+  const maxBtn=5;let btns='';
+  for(let p=1;p<=Math.min(totalPages,maxBtn);p++)btns+=`<button class="page-btn${p===crmPage?' active':''}" onclick="goCrmPage(${p})">${p}</button>`;
+  if(totalPages>maxBtn)btns+=`<button class="page-btn" disabled>…</button><button class="page-btn${crmPage===totalPages?' active':''}" onclick="goCrmPage(${totalPages})">${totalPages}</button>`;
+  pag.innerHTML=`
+    <span class="pag-info">${total.toLocaleString('pt-BR')} empresas | pág ${crmPage}/${totalPages}</span>
+    <div class="pag-btns">
+      <button class="page-btn" onclick="goCrmPage(${crmPage-1})" ${crmPage<=1?'disabled':''}>‹</button>
+      ${btns}
+      <button class="page-btn" onclick="goCrmPage(${crmPage+1})" ${crmPage>=totalPages?'disabled':''}>›</button>
+    </div>`;
+}
+
+function goCrmPage(p){
+  if(p<1||p>Math.ceil(filteredCRM.length/PAGE_SIZE))return;
+  crmPage=p;renderCRM();
+}
+
+function applyCrmSearch(){
+  const q=document.getElementById('search-crm').value.trim().toLowerCase();
+  filteredCRM=q?RDCRM.filter(r=>JSON.stringify(r).toLowerCase().includes(q)):[...RDCRM];
+  crmPage=1;renderCRM();
+}
+
+function exportCRM(){
+  if(!filteredCRM.length){showToast('Nenhum dado para exportar','error');return;}
+  const cols=getCrmCols();
+  const rows=filteredCRM.map(r=>{
+    const obj={};
+    cols.forEach(c=>obj[c]=c==='cnpj'?formatCNPJ(r.cnpj):(r[c]??''));
+    return obj;
+  });
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Empresas CRM');
+  XLSX.writeFile(wb,`empresas_crm_${new Date().toISOString().slice(0,10)}.xlsx`);
   showToast('Exportado!');
 }
 
