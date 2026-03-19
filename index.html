@@ -191,6 +191,55 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
 .empty-icon{font-size:48px;margin-bottom:16px;}
 .empty-title{font-size:16px;font-weight:700;color:var(--gray-600);margin-bottom:8px;}
 .empty-sub{font-size:13px;}
+
+/* ── RD STATION INTEGRATION ── */
+--rd:#0073e6;
+.rd-header{display:flex;align-items:center;gap:16px;margin-bottom:28px;}
+.rd-logo-wrap{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#0073e6,#00b5e2);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;box-shadow:0 4px 16px rgba(0,115,230,.25);}
+.rd-header-info h2{font-size:20px;font-weight:700;margin-bottom:3px;}
+.rd-header-info p{font-size:13px;color:var(--gray-400);}
+.rd-status-bar{display:flex;align-items:center;gap:10px;padding:14px 18px;border-radius:12px;background:var(--gray-50);border:1.5px solid var(--gray-200);margin-bottom:24px;}
+.rd-status-dot{width:10px;height:10px;border-radius:50%;background:var(--gray-200);flex-shrink:0;}
+.rd-status-dot.connected{background:var(--green);box-shadow:0 0 0 3px rgba(0,192,122,.2);}
+.rd-status-dot.error{background:var(--red);box-shadow:0 0 0 3px rgba(229,57,53,.2);}
+.rd-status-text{font-size:13px;font-weight:600;}
+.rd-status-sub{font-size:12px;color:var(--gray-400);margin-left:auto;font-family:'DM Mono',monospace;}
+.rd-config-card{background:white;border-radius:16px;padding:24px;box-shadow:0 1px 6px rgba(0,0,0,.06);margin-bottom:20px;}
+.rd-config-card h3{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gray-400);margin-bottom:18px;}
+.rd-token-wrap{position:relative;}
+.rd-token-input{width:100%;padding:12px 48px 12px 14px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:'DM Mono',monospace;font-size:13px;color:var(--gray-800);background:var(--gray-50);outline:none;transition:border-color .2s;}
+.rd-token-input:focus{border-color:#0073e6;background:white;box-shadow:0 0 0 3px rgba(0,115,230,.08);}
+.rd-token-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:16px;padding:4px;}
+.rd-token-eye:hover{color:var(--gray-800);}
+.rd-actions-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+.btn-rd-test{padding:10px 20px;border-radius:10px;font-family:'Sora',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid var(--gray-200);background:white;color:var(--gray-600);transition:all .15s;}
+.btn-rd-test:hover{border-color:#0073e6;color:#0073e6;}
+.btn-rd-save{padding:10px 24px;background:#0073e6;color:white;border:none;border-radius:10px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(0,115,230,.25);transition:background .2s;}
+.btn-rd-save:hover{background:#005cbf;}
+.btn-rd-sync{padding:10px 24px;background:var(--green);color:white;border:none;border-radius:10px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(0,192,122,.25);transition:background .2s;display:flex;align-items:center;gap:8px;}
+.btn-rd-sync:hover{background:#009960;}
+.btn-rd-sync:disabled{opacity:.5;cursor:not-allowed;}
+.rd-sync-progress{display:none;margin-top:20px;padding:16px;background:var(--gray-50);border-radius:12px;border:1.5px solid var(--gray-200);}
+.rd-sync-progress.active{display:block;}
+.rd-prog-track{background:var(--gray-200);border-radius:99px;height:8px;overflow:hidden;margin:10px 0 8px;}
+.rd-prog-fill{height:100%;background:linear-gradient(90deg,#0073e6,#00b5e2);border-radius:99px;transition:width .4s ease;width:0%;}
+.rd-prog-label{font-size:12px;color:var(--gray-600);}
+.rd-log{margin-top:10px;max-height:140px;overflow-y:auto;font-size:11px;font-family:'DM Mono',monospace;color:var(--gray-600);line-height:1.8;}
+.rd-log-line{padding:2px 0;border-bottom:1px solid var(--gray-100);}
+.rd-log-line.ok{color:var(--green);}
+.rd-log-line.err{color:var(--red);}
+.rd-log-line.info{color:#0073e6;}
+.rd-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.rd-stat-card{background:white;border-radius:12px;padding:16px 18px;box-shadow:0 1px 6px rgba(0,0,0,.06);text-align:center;}
+.rd-stat-val{font-size:28px;font-weight:700;font-family:'DM Mono',monospace;color:#0073e6;line-height:1;margin-bottom:4px;}
+.rd-stat-label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--gray-400);}
+.rd-howto{background:#F0F7FF;border:1.5px solid #C2DEFF;border-radius:12px;padding:18px;margin-bottom:20px;}
+.rd-howto h4{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#0073e6;margin-bottom:10px;}
+.rd-howto ol{padding-left:18px;}
+.rd-howto li{font-size:13px;color:var(--gray-600);margin-bottom:6px;line-height:1.5;}
+.rd-howto a{color:#0073e6;text-decoration:none;font-weight:600;}
+.rd-howto a:hover{text-decoration:underline;}
+.rd-last-sync{font-size:11px;color:var(--gray-400);font-family:'DM Mono',monospace;margin-top:12px;}
 </style>
 </head>
 <body>
@@ -224,6 +273,7 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
       <button class="nav-btn" id="nav-unificada" onclick="showView('unificada')">Base Unificada</button>
       <button class="nav-btn" id="nav-empresascrm" onclick="showView('empresascrm')">Empresas CRM</button>
       <button class="nav-btn" id="nav-listas" onclick="showView('listas')">Listas</button>
+      <button class="nav-btn" id="nav-integracoes" onclick="showView('integracoes')" style="display:flex;align-items:center;gap:5px;">🔗 Integrações</button>
     </nav>
     <div class="topbar-actions">
       <span class="role-badge" id="role-badge">Admin</span>
@@ -322,6 +372,77 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
       <div class="empty-icon">📋</div>
       <div class="empty-title">Nenhuma lista criada</div>
       <div class="empty-sub">Filtre a base unificada e salve como lista</div>
+    </div>
+  </div>
+
+  <!-- INTEGRAÇÕES -->
+  <div class="view" id="view-integracoes">
+    <div style="max-width:760px;">
+
+      <!-- Header RD Station -->
+      <div class="rd-header">
+        <div class="rd-logo-wrap">🔗</div>
+        <div class="rd-header-info">
+          <h2>Integração RD Station CRM</h2>
+          <p>Sincronize organizações do RD Station diretamente para a base unificada</p>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="rd-status-bar" id="rd-status-bar">
+        <div class="rd-status-dot" id="rd-status-dot"></div>
+        <span class="rd-status-text" id="rd-status-text">Não configurado</span>
+        <span class="rd-status-sub" id="rd-status-sub"></span>
+      </div>
+
+      <!-- Stats -->
+      <div class="rd-stats-grid" id="rd-stats-grid" style="display:none;">
+        <div class="rd-stat-card"><div class="rd-stat-val" id="rd-stat-total">—</div><div class="rd-stat-label">Organizações no RD</div></div>
+        <div class="rd-stat-card"><div class="rd-stat-val" id="rd-stat-sync">—</div><div class="rd-stat-label">Última sincronização</div></div>
+        <div class="rd-stat-card"><div class="rd-stat-val" id="rd-stat-campos">—</div><div class="rd-stat-label">Campos mapeados</div></div>
+      </div>
+
+      <!-- Como obter o token -->
+      <div class="rd-howto" id="rd-howto">
+        <h4>📖 Como obter seu token de API</h4>
+        <ol>
+          <li>Acesse o <a href="https://app.rdstation.com.br/crm" target="_blank">RD Station CRM</a> e faça login</li>
+          <li>Clique no seu <b>avatar/nome</b> no canto superior direito</li>
+          <li>Vá em <b>"Minha Conta"</b> → <b>"Integrações"</b> ou <b>"API"</b></li>
+          <li>Copie o <b>Token de API</b> exibido na tela</li>
+          <li>Cole o token no campo abaixo e clique em <b>Testar Conexão</b></li>
+        </ol>
+      </div>
+
+      <!-- Config card -->
+      <div class="rd-config-card">
+        <h3>🔑 Configuração do Token</h3>
+        <label class="form-label" style="margin-bottom:8px;">Token de API do RD Station CRM</label>
+        <div class="rd-token-wrap">
+          <input class="rd-token-input" type="password" id="rd-token-input" placeholder="Cole aqui seu token de API...">
+          <button class="rd-token-eye" onclick="toggleTokenVisibility()" id="rd-token-eye-btn">👁</button>
+        </div>
+        <div class="rd-actions-row">
+          <button class="btn-rd-test" onclick="testarConexaoRD()">🔌 Testar Conexão</button>
+          <button class="btn-rd-save" onclick="salvarTokenRD()">💾 Salvar Token</button>
+          <button class="btn-rd-sync" id="btn-rd-sync" onclick="sincronizarRD()" disabled>
+            <span id="btn-rd-sync-icon">⚡</span> Sincronizar Agora
+          </button>
+        </div>
+        <div class="rd-last-sync" id="rd-last-sync"></div>
+      </div>
+
+      <!-- Sync progress -->
+      <div class="rd-sync-progress" id="rd-sync-progress">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-size:12px;font-weight:700;color:var(--gray-600);">Progresso da Sincronização</span>
+          <span style="font-size:11px;font-family:'DM Mono';color:var(--gray-400);" id="rd-prog-pct">0%</span>
+        </div>
+        <div class="rd-prog-track"><div class="rd-prog-fill" id="rd-prog-fill"></div></div>
+        <div class="rd-prog-label" id="rd-prog-label">Aguardando...</div>
+        <div class="rd-log" id="rd-log"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -621,6 +742,9 @@ function showView(v){
     filteredCRM=[...RDCRM];
     crmPage=1;
     renderCRM();
+  }
+  if(v==='integracoes'){
+    initRDView();
   }
 }
 
@@ -1539,6 +1663,280 @@ function exportListaById(id){
   XLSX.writeFile(wb,`onebase_lista_${lista.nome.replace(/\s/g,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`);
   showToast('Exportado!');
 }
+
+// ── RD STATION CRM INTEGRATION ─────────────────────────────────────
+const RD_API = 'https://crm.rdstation.com/api/v2';
+let rdToken = '';
+
+function initRDView(){
+  // Restaura token salvo
+  const saved = localStorage.getItem('rd_token');
+  if(saved){
+    rdToken = saved;
+    document.getElementById('rd-token-input').value = saved;
+    setRDStatus('saved');
+    document.getElementById('btn-rd-sync').disabled = false;
+    document.getElementById('rd-howto').style.display = 'none';
+    const lastSync = localStorage.getItem('rd_last_sync');
+    if(lastSync) document.getElementById('rd-last-sync').textContent = '🕐 Última sync: ' + lastSync;
+  } else {
+    setRDStatus('none');
+  }
+}
+
+function setRDStatus(state, extra=''){
+  const dot = document.getElementById('rd-status-dot');
+  const text = document.getElementById('rd-status-text');
+  const sub = document.getElementById('rd-status-sub');
+  dot.className = 'rd-status-dot';
+  if(state==='none'){ text.textContent='Não configurado'; sub.textContent=''; }
+  else if(state==='saved'){ dot.classList.add('connected'); text.textContent='Token configurado'; sub.textContent=extra||'Pronto para sincronizar'; }
+  else if(state==='connected'){ dot.classList.add('connected'); text.textContent='Conectado ao RD Station CRM'; sub.textContent=extra; }
+  else if(state==='error'){ dot.classList.add('error'); text.textContent='Erro de conexão'; sub.textContent=extra; }
+  else if(state==='syncing'){ dot.classList.add('connected'); text.textContent='Sincronizando...'; sub.textContent=extra; }
+}
+
+function toggleTokenVisibility(){
+  const inp = document.getElementById('rd-token-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  document.getElementById('rd-token-eye-btn').textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+
+function salvarTokenRD(){
+  const token = document.getElementById('rd-token-input').value.trim();
+  if(!token){ showToast('Cole o token antes de salvar','error'); return; }
+  rdToken = token;
+  localStorage.setItem('rd_token', token);
+  setRDStatus('saved');
+  document.getElementById('btn-rd-sync').disabled = false;
+  document.getElementById('rd-howto').style.display = 'none';
+  showToast('Token salvo com sucesso!');
+}
+
+async function testarConexaoRD(){
+  const token = document.getElementById('rd-token-input').value.trim();
+  if(!token){ showToast('Insira o token primeiro','error'); return; }
+  showLoading();
+  try{
+    // Testa com uma chamada simples à API — lista 1 organização
+    const resp = await rdFetch('/organizations?limit=1', token);
+    if(resp && (resp.organizations !== undefined || Array.isArray(resp))){
+      const total = resp.total || (Array.isArray(resp) ? resp.length : '?');
+      setRDStatus('connected', `${total} organizações encontradas`);
+      document.getElementById('rd-stats-grid').style.display='grid';
+      document.getElementById('rd-stat-total').textContent = (resp.total||'?').toLocaleString('pt-BR');
+      document.getElementById('rd-stat-campos').textContent = '12+';
+      document.getElementById('btn-rd-sync').disabled = false;
+      showToast('✅ Conexão com RD Station estabelecida!');
+    } else {
+      throw new Error('Resposta inesperada da API');
+    }
+  } catch(e){
+    setRDStatus('error', e.message);
+    showToast('Erro: ' + e.message, 'error');
+  }
+  hideLoading();
+}
+
+async function rdFetch(endpoint, token, params={}){
+  token = token || rdToken;
+  const qs = new URLSearchParams(params).toString();
+  const url = `${RD_API}${endpoint}${qs?'?'+qs:''}`;
+  const r = await fetch(url, {
+    headers: {
+      'Authorization': token,
+      'Content-Type': 'application/json'
+    }
+  });
+  const text = await r.text();
+  if(!r.ok){
+    let msg = text;
+    try{ msg = JSON.parse(text).message || JSON.parse(text).error || text; }catch(e2){}
+    throw new Error(`API RD Station: ${r.status} — ${msg}`);
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+function rdLog(msg, type=''){
+  const log = document.getElementById('rd-log');
+  const line = document.createElement('div');
+  line.className = 'rd-log-line' + (type?' '+type:'');
+  line.textContent = `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sincronizarRD(){
+  if(!rdToken){ showToast('Configure o token primeiro','error'); return; }
+  const btn = document.getElementById('btn-rd-sync');
+  btn.disabled = true;
+  document.getElementById('btn-rd-sync-icon').textContent = '⏳';
+
+  const prog = document.getElementById('rd-sync-progress');
+  prog.classList.add('active');
+  document.getElementById('rd-log').innerHTML = '';
+  setRDStatus('syncing');
+
+  const setProgress = (pct, label) => {
+    document.getElementById('rd-prog-fill').style.width = pct + '%';
+    document.getElementById('rd-prog-pct').textContent = pct + '%';
+    document.getElementById('rd-prog-label').textContent = label;
+  };
+
+  try{
+    setProgress(5, 'Conectando ao RD Station CRM...');
+    rdLog('Iniciando sincronização...', 'info');
+
+    // 1. Descobre total de organizações
+    const first = await rdFetch('/organizations', rdToken, {limit:1, page:1});
+    const total = first.total || 0;
+    rdLog(`Total de organizações no RD: ${total.toLocaleString('pt-BR')}`, 'info');
+    document.getElementById('rd-stat-total').textContent = total.toLocaleString('pt-BR');
+    document.getElementById('rd-stats-grid').style.display = 'grid';
+
+    if(total === 0){
+      rdLog('Nenhuma organização encontrada. Verifique o token e as permissões.', 'err');
+      setRDStatus('error', 'Nenhuma organização encontrada');
+      setProgress(100, 'Concluído — 0 organizações');
+      btn.disabled = false;
+      document.getElementById('btn-rd-sync-icon').textContent = '⚡';
+      return;
+    }
+
+    // 2. Busca todas as organizações paginando
+    const PAGE_SIZE_RD = 200;
+    const totalPages = Math.ceil(total / PAGE_SIZE_RD);
+    let allOrgs = [];
+
+    for(let page = 1; page <= totalPages; page++){
+      setProgress(Math.round(5 + (page/totalPages)*50), `Buscando página ${page}/${totalPages}...`);
+      const resp = await rdFetch('/organizations', rdToken, {limit: PAGE_SIZE_RD, page});
+      const orgs = resp.organizations || resp || [];
+      allOrgs = allOrgs.concat(orgs);
+      rdLog(`Página ${page}/${totalPages}: ${orgs.length} organizações`, 'ok');
+    }
+
+    rdLog(`Total carregado: ${allOrgs.length} organizações`, 'info');
+
+    // 3. Garante coluna fora_do_crm no banco
+    await sbRpc('add_column_if_not_exists',{col_name:'fora_do_crm',col_type:'text'});
+
+    // 4. Mapeia os campos do RD Station para a estrutura do Supabase
+    function mapRDOrg(org){
+      // Extrai CNPJ de campos possíveis
+      let cnpj = org.cnpj || org.cpf_cnpj || '';
+      cnpj = String(cnpj).replace(/\D/g,'');
+
+      return {
+        cnpj: cnpj || null,
+        nome_empresa: org.name || org.nome || '',
+        telefone: org.phone || org.telefone || '',
+        email: org.email || '',
+        website: org.website || org.site || '',
+        cidade: org.city || org.cidade || '',
+        estado: org.state || org.estado || '',
+        segmento: org.business_type || org.segmento || org.industry || '',
+        responsavel: org.user ? (org.user.name || '') : '',
+        rd_id: String(org._id || org.id || ''),
+        fora_do_crm: null
+      };
+    }
+
+    // 5. Salva as organizações na tabela rdcrm_empresas
+    setProgress(60, 'Salvando organizações no banco...');
+
+    // Garante colunas extras no rdcrm_empresas
+    const extraCols = ['telefone','email','website','cidade','estado','segmento','responsavel','rd_id'];
+    for(const col of extraCols){
+      try{ await sbRpc('add_column_if_not_exists',{col_name:col,col_type:'text'}); }catch(e){}
+    }
+
+    const CHUNK = 50;
+    let salvos = 0, erros = 0;
+
+    for(let i = 0; i < allOrgs.length; i += CHUNK){
+      const slice = allOrgs.slice(i, i+CHUNK);
+      const mapped = slice.map(mapRDOrg);
+
+      // Separa com e sem CNPJ
+      const comCnpj = mapped.filter(o => o.cnpj && o.cnpj.length >= 11);
+      const semCnpj = mapped.filter(o => !o.cnpj || o.cnpj.length < 11);
+
+      // Upsert os que têm CNPJ
+      if(comCnpj.length){
+        try{
+          await sbFetch('rdcrm_empresas', {
+            method: 'POST',
+            headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal', 'on_conflict': 'cnpj' },
+            body: JSON.stringify(comCnpj)
+          });
+          salvos += comCnpj.length;
+        } catch(e){
+          // Tenta inserir um a um para identificar o problema
+          for(const org of comCnpj){
+            try{
+              await sbFetch(`rdcrm_empresas?cnpj=eq.${org.cnpj}`, {
+                method: 'PATCH',
+                headers: { 'Prefer': 'return=minimal' },
+                body: JSON.stringify(org)
+              });
+              salvos++;
+            } catch(e2){
+              // Se não existe, insere
+              try{
+                await sbFetch('rdcrm_empresas', {
+                  method: 'POST',
+                  headers: { 'Prefer': 'return=minimal' },
+                  body: JSON.stringify([org])
+                });
+                salvos++;
+              } catch(e3){ erros++; }
+            }
+          }
+        }
+      }
+
+      // Sem CNPJ: salva com rd_id como referência
+      if(semCnpj.length){
+        try{
+          await sbFetch('rdcrm_empresas', {
+            method: 'POST',
+            headers: { 'Prefer': 'return=minimal' },
+            body: JSON.stringify(semCnpj)
+          });
+          salvos += semCnpj.length;
+        } catch(e){ erros += semCnpj.length; }
+      }
+
+      const pct = Math.round(60 + ((i+CHUNK)/allOrgs.length)*35);
+      setProgress(Math.min(pct, 95), `Salvando ${Math.min(i+CHUNK,allOrgs.length).toLocaleString('pt-BR')}/${allOrgs.length.toLocaleString('pt-BR')}...`);
+    }
+
+    setProgress(100, `Concluído! ${salvos.toLocaleString('pt-BR')} organizações sincronizadas${erros?` (${erros} erros)`:''}`);
+    rdLog(`✅ Sincronização concluída: ${salvos} salvas${erros?' | '+erros+' erros':''}`, 'ok');
+
+    const now = new Date().toLocaleString('pt-BR');
+    localStorage.setItem('rd_last_sync', now);
+    document.getElementById('rd-last-sync').textContent = '🕐 Última sync: ' + now;
+    document.getElementById('rd-stat-sync').textContent = new Date().toLocaleDateString('pt-BR');
+    setRDStatus('connected', `${salvos.toLocaleString('pt-BR')} orgs sincronizadas`);
+
+    showToast(`✅ ${salvos.toLocaleString('pt-BR')} organizações do RD Station sincronizadas!`);
+
+    // Recarrega os dados
+    await loadAll();
+
+  } catch(e){
+    rdLog('❌ Erro: ' + e.message, 'err');
+    setRDStatus('error', e.message);
+    showToast('Erro na sincronização: ' + e.message, 'error');
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  document.getElementById('btn-rd-sync-icon').textContent = '⚡';
+}
+
 
 </script>
 </body>
