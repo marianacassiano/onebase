@@ -409,11 +409,56 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
           <li>Acesse o <a href="https://app.rdstation.com.br/crm" target="_blank">RD Station CRM</a> e faça login</li>
           <li>Clique no <b>seu nome</b> no menu superior direito → <b>"Configurações"</b></li>
           <li>No menu lateral, clique em <b>"Integrações"</b></li>
-          <li>Clique em <b>"API"</b> e copie o <b>Token</b> exibido na página</li>
+          <li>Clique em <b>"API"</b> e copie o <b>Token da instância</b></li>
           <li>Cole o token no campo abaixo e clique em <b>"Testar Conexão"</b></li>
         </ol>
         <div style="margin-top:10px;padding:10px 12px;background:rgba(0,115,230,.08);border-radius:8px;font-size:12px;color:#0073e6;">
-          💡 <b>Dica:</b> O token é uma string longa. Certifique-se de copiar <b>todo</b> o token sem espaços extras.
+          💡 O token é uma string longa. Copie <b>todo</b> o token sem espaços extras.
+        </div>
+      </div>
+
+      <!-- Edge Function setup -->
+      <div class="rd-howto" style="border-color:#FFB74D;background:#FFF8E1;margin-bottom:20px;">
+        <h4 style="color:#E65100;">⚙️ Passo obrigatório: criar o proxy no Supabase (1x)</h4>
+        <p style="font-size:12px;color:var(--gray-600);margin-bottom:10px;">A API do RD Station bloqueia chamadas diretas do browser (CORS). Precisamos de uma <b>Edge Function</b> no Supabase como intermediário. Faça isso uma única vez:</p>
+        <ol>
+          <li>Acesse <a href="https://supabase.com/dashboard" target="_blank">supabase.com/dashboard</a> → seu projeto <b>rsqnxihkeuevjtxgjgro</b></li>
+          <li>Menu lateral → <b>Edge Functions</b> → botão <b>"New Function"</b></li>
+          <li>Nome: <code style="background:#f5f5f5;padding:1px 6px;border-radius:3px;font-family:'DM Mono',monospace;">rd-proxy</code> → clique em <b>Create</b></li>
+          <li>Substitua todo o conteúdo pelo código abaixo e clique em <b>Deploy</b>:</li>
+        </ol>
+        <div style="background:#1e1e2e;border-radius:8px;padding:14px;margin-top:12px;position:relative;">
+          <button onclick="copyEdgeCode()" style="position:absolute;top:8px;right:8px;background:#0073e6;color:white;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:'Sora',sans-serif;font-weight:600;">📋 Copiar código</button>
+          <pre id="edge-code-text" style="color:#cdd6f4;font-family:'DM Mono',monospace;font-size:11px;white-space:pre;overflow-x:auto;margin:0;padding-right:90px;">import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  try {
+    const { endpoint, token, params = {} } = await req.json();
+    const qs = new URLSearchParams({ token, ...params }).toString();
+    const url = `https://crm.rdstation.com/api/v2${endpoint}?${qs}`;
+    const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+    const body = await resp.text();
+    return new Response(body, {
+      status: resp.status,
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
+});</pre>
+        </div>
+        <div style="margin-top:10px;padding:8px 12px;background:rgba(0,192,122,.1);border-radius:6px;font-size:12px;color:#2E7D32;">
+          ✅ Após o deploy da função, volte aqui, cole o token e clique em <b>Testar Conexão</b>.
         </div>
       </div>
 
@@ -1668,6 +1713,8 @@ function exportListaById(id){
 }
 
 // ── RD STATION CRM INTEGRATION ─────────────────────────────────────
+// A API do RD Station bloqueia chamadas diretas do browser (CORS).
+// Usamos a Supabase Edge Function "rd-proxy" como intermediário server-side.
 const RD_API = 'https://crm.rdstation.com/api/v2';
 let rdToken = '';
 
@@ -1742,16 +1789,15 @@ async function testarConexaoRD(){
 
 async function rdFetch(endpoint, token, params={}){
   token = token || rdToken;
-  // RD Station CRM v2: token pode ser passado como query param ?token= ou como header Authorization
-  // Usamos query param que é o método mais compatível com a API deles
-  const allParams = { token, ...params };
-  const qs = new URLSearchParams(allParams).toString();
-  const url = `${RD_API}${endpoint}?${qs}`;
-  const r = await fetch(url, {
+  // Chama a Edge Function do Supabase como proxy (contorna CORS)
+  const proxyUrl = `${SB_URL}/functions/v1/rd-proxy`;
+  const r = await fetch(proxyUrl, {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    }
+      'Authorization': `Bearer ${SB_KEY}`
+    },
+    body: JSON.stringify({ endpoint, token, params })
   });
   const text = await r.text();
   if(!r.ok){
@@ -1760,7 +1806,10 @@ async function rdFetch(endpoint, token, params={}){
       const parsed = JSON.parse(text);
       msg = parsed.message || parsed.error || parsed.errors || text;
     }catch(e2){}
-    throw new Error(`API RD Station: ${r.status} — ${msg}`);
+    if(r.status === 404 || r.status === 405){
+      throw new Error('Edge Function "rd-proxy" não encontrada no Supabase. Veja as instruções na tela.');
+    }
+    throw new Error(`Proxy: ${r.status} — ${msg}`);
   }
   return text ? JSON.parse(text) : {};
 }
@@ -1772,6 +1821,20 @@ function rdLog(msg, type=''){
   line.textContent = `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`;
   log.appendChild(line);
   log.scrollTop = log.scrollHeight;
+}
+
+function copyEdgeCode(){
+  const code = document.getElementById('edge-code-text').textContent;
+  navigator.clipboard.writeText(code).then(()=>{
+    showToast('Código copiado! Cole no editor do Supabase.');
+  }).catch(()=>{
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = code; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Código copiado!');
+  });
 }
 
 async function sincronizarRD(){
