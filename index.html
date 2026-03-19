@@ -1790,54 +1790,40 @@ async function testarConexaoRD(){
 async function rdFetch(endpoint, token, params={}){
   token = token || rdToken;
 
-  // ── Tentativa 1: chamada direta ao RD Station (funciona de HTTPS) ──
-  try{
-    const allParams = { token, ...params };
-    const qs = new URLSearchParams(allParams).toString();
-    const url = `https://crm.rdstation.com/api/v2${endpoint}?${qs}`;
-    const r = await fetch(url, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
-    });
-    if(r.ok){
-      const text = await r.text();
-      return text ? JSON.parse(text) : {};
-    }
-    // Se 401/403 do RD Station (token inválido), lança erro direto
-    if(r.status === 401 || r.status === 403){
-      const text = await r.text();
-      // 403 com HTML = bloqueio de CORS/IP, tenta proxy
-      if(text.includes('<html>')) throw new Error('CORS_BLOCK');
-      throw new Error(`Token inválido ou sem permissão (${r.status})`);
-    }
-    throw new Error(`RD Station: ${r.status}`);
-  }catch(e){
-    // Se não for bloqueio de CORS, propaga o erro
-    if(!e.message.includes('CORS_BLOCK') && !e.message.includes('Failed to fetch')){
-      throw e;
-    }
-  }
-
-  // ── Tentativa 2: via Edge Function proxy no Supabase ──
-  const proxyUrl = `${SB_URL}/functions/v1/rd-proxy`;
-  const r2 = await fetch(proxyUrl, {
+  // Usa a função RPC do Supabase (PostgreSQL + pg_net) como proxy server-side
+  // Isso contorna CORS e bloqueios de IP pois a chamada sai do servidor PostgreSQL
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/rd_proxy`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'apikey': SB_KEY,
       'Authorization': `Bearer ${SB_KEY}`,
-      'apikey': SB_KEY
+      'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ endpoint, token, params })
+    body: JSON.stringify({
+      endpoint,
+      token,
+      params: Object.fromEntries(
+        Object.entries(params).map(([k,v]) => [k, String(v)])
+      )
+    })
   });
-  const text2 = await r2.text();
-  if(!r2.ok){
-    let msg = text2;
-    try{ msg = JSON.parse(text2).message || JSON.parse(text2).error || text2; }catch(e2){}
-    if(r2.status===404||r2.status===405) throw new Error('Edge Function "rd-proxy" não encontrada no Supabase.');
-    if(r2.status===403) throw new Error('Proxy 403: verifique se a Edge Function rd-proxy está com JWT Verification OFF no Supabase.');
-    throw new Error(`Proxy: ${r2.status} — ${msg}`);
+
+  const text = await r.text();
+  if(!r.ok){
+    let msg = text;
+    try{ msg = JSON.parse(text).message || JSON.parse(text).hint || text; }catch(e){}
+    if(r.status===404) throw new Error('Função rd_proxy não encontrada. Execute o script SQL no Supabase primeiro.');
+    throw new Error(`RPC: ${r.status} — ${msg}`);
   }
-  return text2 ? JSON.parse(text2) : {};
+
+  const data = text ? JSON.parse(text) : {};
+
+  // A função retorna { error: '...' } se algo deu errado no servidor
+  if(data && data.error){
+    throw new Error(data.error + (data.body ? ': ' + String(data.body).substring(0,200) : ''));
+  }
+
+  return data;
 }
 
 function rdLog(msg, type=''){
