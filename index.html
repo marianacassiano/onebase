@@ -407,11 +407,14 @@ body{font-family:'Sora',sans-serif;background:var(--gray-50);color:var(--gray-80
         <h4>📖 Como obter seu token de API</h4>
         <ol>
           <li>Acesse o <a href="https://app.rdstation.com.br/crm" target="_blank">RD Station CRM</a> e faça login</li>
-          <li>Clique no seu <b>avatar/nome</b> no canto superior direito</li>
-          <li>Vá em <b>"Minha Conta"</b> → <b>"Integrações"</b> ou <b>"API"</b></li>
-          <li>Copie o <b>Token de API</b> exibido na tela</li>
-          <li>Cole o token no campo abaixo e clique em <b>Testar Conexão</b></li>
+          <li>Clique no <b>seu nome</b> no menu superior direito → <b>"Configurações"</b></li>
+          <li>No menu lateral, clique em <b>"Integrações"</b></li>
+          <li>Clique em <b>"API"</b> e copie o <b>Token</b> exibido na página</li>
+          <li>Cole o token no campo abaixo e clique em <b>"Testar Conexão"</b></li>
         </ol>
+        <div style="margin-top:10px;padding:10px 12px;background:rgba(0,115,230,.08);border-radius:8px;font-size:12px;color:#0073e6;">
+          💡 <b>Dica:</b> O token é uma string longa. Certifique-se de copiar <b>todo</b> o token sem espaços extras.
+        </div>
       </div>
 
       <!-- Config card -->
@@ -1719,18 +1722,17 @@ async function testarConexaoRD(){
   showLoading();
   try{
     // Testa com uma chamada simples à API — lista 1 organização
-    const resp = await rdFetch('/organizations?limit=1', token);
-    if(resp && (resp.organizations !== undefined || Array.isArray(resp))){
-      const total = resp.total || (Array.isArray(resp) ? resp.length : '?');
-      setRDStatus('connected', `${total} organizações encontradas`);
-      document.getElementById('rd-stats-grid').style.display='grid';
-      document.getElementById('rd-stat-total').textContent = (resp.total||'?').toLocaleString('pt-BR');
-      document.getElementById('rd-stat-campos').textContent = '12+';
-      document.getElementById('btn-rd-sync').disabled = false;
-      showToast('✅ Conexão com RD Station estabelecida!');
-    } else {
-      throw new Error('Resposta inesperada da API');
-    }
+    const resp = await rdFetch('/organizations', token, {page:1, limit:1});
+    // A API pode retornar { organizations: [...], total: N } ou diretamente array
+    const total = resp.total !== undefined ? resp.total
+                : Array.isArray(resp) ? resp.length
+                : (resp.organizations ? (resp.total || resp.organizations.length) : '?');
+    setRDStatus('connected', `${Number(total).toLocaleString('pt-BR')} organizações encontradas`);
+    document.getElementById('rd-stats-grid').style.display='grid';
+    document.getElementById('rd-stat-total').textContent = Number(total).toLocaleString('pt-BR');
+    document.getElementById('rd-stat-campos').textContent = '12+';
+    document.getElementById('btn-rd-sync').disabled = false;
+    showToast('✅ Conexão com RD Station estabelecida!');
   } catch(e){
     setRDStatus('error', e.message);
     showToast('Erro: ' + e.message, 'error');
@@ -1740,18 +1742,24 @@ async function testarConexaoRD(){
 
 async function rdFetch(endpoint, token, params={}){
   token = token || rdToken;
-  const qs = new URLSearchParams(params).toString();
-  const url = `${RD_API}${endpoint}${qs?'?'+qs:''}`;
+  // RD Station CRM v2: token pode ser passado como query param ?token= ou como header Authorization
+  // Usamos query param que é o método mais compatível com a API deles
+  const allParams = { token, ...params };
+  const qs = new URLSearchParams(allParams).toString();
+  const url = `${RD_API}${endpoint}?${qs}`;
   const r = await fetch(url, {
     headers: {
-      'Authorization': token,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     }
   });
   const text = await r.text();
   if(!r.ok){
     let msg = text;
-    try{ msg = JSON.parse(text).message || JSON.parse(text).error || text; }catch(e2){}
+    try{
+      const parsed = JSON.parse(text);
+      msg = parsed.message || parsed.error || parsed.errors || text;
+    }catch(e2){}
     throw new Error(`API RD Station: ${r.status} — ${msg}`);
   }
   return text ? JSON.parse(text) : {};
